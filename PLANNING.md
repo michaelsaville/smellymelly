@@ -1,0 +1,264 @@
+# Smelly Melly — Planning Document
+
+**Version:** 0.1  
+**Status:** Concept / Feature Spec  
+**Author:** PCC2K  
+**Last Updated:** April 2026
+
+---
+
+## 1. What This Is
+
+A simple, self-contained e-commerce platform for a single-owner handmade bath & body products business. Not Shopify, not WooCommerce — a purpose-built app that handles storefront, inventory, orders, shipping, and invoicing in one place without monthly SaaS fees.
+
+### Products
+- Candles (various sizes: tins, jars, pillars)
+- Soaps (bar soap, liquid soap)
+- Bath bombs / bath products
+- Lip balm
+- Beard balm
+- Other handmade bath & body items
+
+### Key Characteristics
+- Single owner (Mel) — no multi-user, no roles needed initially
+- Small catalog (handful of products, but many variants via scent × type × size)
+- Mix of shipped (USPS) and local pickup orders
+- Square for payment (already familiar ecosystem)
+- Handmade = variable inventory, manual stock counts, batch production
+
+---
+
+## 2. Variant Architecture
+
+This is the trickiest part of the data model. Smelly Melly's products are organized around **scents** that can span multiple product types:
+
+**Scent** = the fragrance recipe (e.g., "Lavender Dreams", "Cedar & Sage", "Honey Vanilla")
+
+**Product Type** = what it's made into (Candle, Soap, Bath Bomb, Lip Balm, etc.)
+
+**Size** = within a type (8oz candle vs 16oz candle)
+
+So a single scent like "Lavender Dreams" might have:
+- Candle 8oz — $12
+- Candle 16oz — $20
+- Wax Melt 6-pack — $8
+- Soap Bar 4oz — $6
+- Lip Balm — $4
+
+Each combination is a **variant** with its own price, cost, SKU, stock count, and weight.
+
+### Data Model
+
+```
+Scent (many)
+  └── Product (many per scent)
+        └── ProductVariant (many per product — size/format variations)
+              ├── price
+              ├── costPrice
+              ├── sku
+              ├── stockQuantity
+              ├── weight (for shipping calc)
+              └── isActive
+```
+
+Alternative simpler approach (recommended for v1):
+
+```
+Product
+  ├── name ("Lavender Dreams Candle")
+  ├── scent ("Lavender Dreams")
+  ├── category ("Candles")
+  └── variants[]
+        ├── size ("8oz tin") + price + stock
+        └── size ("16oz jar") + price + stock
+```
+
+The simpler approach treats each scent×type as its own product, with size as the only variant axis. Easier to manage for a small catalog. Can always restructure later.
+
+---
+
+## 3. Square Integration
+
+### What Square Provides
+- **Web Payments SDK** — embedded payment form on checkout page. PCI-compliant card entry without touching card data.
+- **Orders API** — create orders in Square's system, track payments.
+- **Catalog API** — could sync products to Square POS, but probably not needed if she's not using Square POS for in-person sales of these products.
+- **Invoices API** — could use for invoicing, but we'll build our own simpler version.
+
+### What We Need
+- Square Developer account (free)
+- Application credentials (sandbox + production)
+- Location ID (from Square dashboard)
+
+### Checkout Flow
+1. Customer fills cart → checkout page
+2. Checkout page renders Square Web Payments form (card input)
+3. On submit: Square tokenizes card → we get a `sourceId`
+4. Server-side: call Square Payments API with `sourceId` + amount
+5. If approved: create order record, deduct inventory, send confirmation email
+6. If declined: show error, let them retry
+
+### Environment Variables
+```
+SQUARE_ACCESS_TOKEN=          # from Square Developer dashboard
+SQUARE_LOCATION_ID=           # from Square dashboard
+SQUARE_ENVIRONMENT=sandbox    # 'sandbox' or 'production'
+SQUARE_APPLICATION_ID=        # for Web Payments SDK
+```
+
+---
+
+## 4. USPS Shipping
+
+### Options
+1. **USPS Web Tools API** (free, official) — rate calculator, tracking, address validation. No label generation.
+2. **EasyPost API** — multi-carrier, label generation, tracking. Free tier covers low volume. $0.05/label after that. **Recommended** — handles labels too.
+3. **Shippo** — similar to EasyPost, also has free tier.
+4. **Pirate Ship** — discount USPS rates, has API. Popular with small sellers.
+
+### Recommended: EasyPost (or Pirate Ship)
+- EasyPost handles: rate calculation, label generation (PDF), tracking numbers, address validation
+- One integration covers everything shipping-related
+- Free tier is generous for low-volume
+
+### Shipping Flow
+1. Customer enters address at checkout
+2. We call shipping API for rates (USPS Priority, First Class, etc.)
+3. Customer picks a rate
+4. After payment: we create the shipment + buy the label via API
+5. Label PDF available in admin for printing
+6. Tracking number attached to order
+
+### Local Pickup
+- Simple: customer selects "Local Pickup" at checkout
+- No shipping fee, no address required
+- Admin marks as "Ready for Pickup" → "Picked Up"
+
+---
+
+## 5. Label Printing
+
+### Two Types of Labels
+
+**Shipping Labels (USPS)**
+- Generated by EasyPost/USPS after purchase
+- Standard 4x6" thermal label format
+- Includes tracking barcode
+- Print from admin order detail page
+
+**Product / Inventory Labels**
+- For Mel to stick on products or shelves
+- Content: product name, scent, size, SKU, price, barcode/QR (optional)
+- Print from admin inventory page
+- Format: configurable (2.25x1.25" for small products, or Avery sheet labels)
+- Could use browser print CSS or a label generation library
+
+---
+
+## 6. Invoicing (Simple)
+
+Way simpler than TicketHub's invoicing. Just:
+
+- Create invoice with line items (product × quantity × price)
+- Add customer name/email
+- Calculate subtotal + tax + shipping
+- Generate PDF
+- Email to customer
+- Track status: DRAFT → SENT → PAID
+- No charge lifecycle, no contracts, no block hours
+
+Can reuse the react-pdf pattern from TicketHub for PDF generation and M365 for email if on the same server — or use a simple SMTP/Resend integration if hosted separately.
+
+---
+
+## 7. Admin Authentication
+
+For v1, keep it dead simple:
+- Single admin password (hashed, stored in DB or env)
+- Session cookie after login
+- No Entra ID, no OAuth — Mel doesn't have a Microsoft tenant
+- Can always upgrade to proper auth later
+
+Or even simpler: basic HTTP auth on `/admin/*` routes.
+
+---
+
+## 8. Hosting Plan
+
+**Development:** Docker on PCC2K server (same as DocHub/TicketHub)
+**Production:** GoDaddy hosting
+
+### GoDaddy Options
+- **GoDaddy VPS** — full control, can run Docker/Node. ~$5-10/mo.
+- **GoDaddy Web Hosting** — shared, can't run Node. Not suitable.
+- **GoDaddy cPanel** — limited. Not suitable for Next.js.
+
+If GoDaddy VPS isn't available or practical, alternatives:
+- DigitalOcean droplet ($6/mo)
+- Railway (free tier for low traffic)
+- Vercel (free tier, but DB needs separate hosting)
+
+### Domain
+- smellymelly.net — owned, currently has a failed AvanteCart install
+- DNS: point to wherever we host
+- SSL: Let's Encrypt (free) or Caddy auto-TLS
+
+---
+
+## 9. Build Phases
+
+### Phase 1 — Storefront + Cart + Square
+*Get products online and accepting payment*
+
+- [ ] Product catalog page with category filters
+- [ ] Product detail page with variant selector (scent/size)
+- [ ] Product photos (upload + display)
+- [ ] Shopping cart (session-based, no account needed)
+- [ ] Guest checkout with Square payment
+- [ ] Order confirmation page + email
+- [ ] Admin: product CRUD with variants
+- [ ] Admin: order list + detail view
+- [ ] Basic responsive design
+
+### Phase 2 — Inventory + Labels
+*Track what's in stock, print labels*
+
+- [ ] Stock quantity per variant
+- [ ] Low-stock alerts on admin dashboard
+- [ ] Stock adjustment (add batch, manual count)
+- [ ] Auto-deduct on order
+- [ ] Product label printing (browser print or PDF)
+- [ ] Admin: inventory overview page
+
+### Phase 3 — Shipping
+*USPS integration for shipped orders*
+
+- [ ] EasyPost (or Pirate Ship) integration
+- [ ] Rate calculator at checkout
+- [ ] Local pickup option
+- [ ] Shipping label generation (PDF)
+- [ ] Tracking number on order
+- [ ] Order status: PROCESSING → SHIPPED / READY_FOR_PICKUP → DELIVERED / PICKED_UP
+
+### Phase 4 — Invoicing + Polish
+*Simple invoices + quality of life*
+
+- [ ] Invoice creation from admin
+- [ ] PDF generation
+- [ ] Email delivery
+- [ ] Invoice status tracking (DRAFT → SENT → PAID)
+- [ ] About page, contact form
+- [ ] SEO basics (meta tags, sitemap, Open Graph)
+- [ ] Analytics (simple page view counter or Plausible)
+
+---
+
+## 10. Design Direction
+
+- Clean, warm, handmade aesthetic
+- Not corporate — this is a craft business
+- Earth tones, warm accents, handwritten-style fonts for headings
+- Product photos are the hero — large, well-lit
+- Mobile-first (most customers will browse on phone)
+- Fast — no heavy frameworks, minimal JS
+- Inspiration: Etsy shop aesthetic but on a custom domain
