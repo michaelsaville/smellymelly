@@ -1,0 +1,24 @@
+services:
+  app:
+    image: smellymelly:local
+    container_name: smellymelly-app
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3000"
+    env_file: .env.local
+    environment:
+      - UPLOADS_DIR=/uploads
+    volumes:
+      - smellymelly_uploads:/uploads
+    networks:
+      - dochub_default
+
+networks:
+  dochub_default:
+    external: true
+
+volumes:
+  smellymelly_uploads:

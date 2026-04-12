@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.github
+.env
+.env.local
+.env.*.local
+.vscode
+.idea
+*.log
+README.md
+PLANNING.md
