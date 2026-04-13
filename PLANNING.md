@@ -210,44 +210,51 @@ If GoDaddy VPS isn't available or practical, alternatives:
 ### Phase 1 — Storefront + Cart + Square
 *Get products online and accepting payment*
 
-- [ ] Product catalog page with category filters
-- [ ] Product detail page with variant selector (scent/size)
-- [ ] Product photos (upload + display)
-- [ ] Shopping cart (session-based, no account needed)
-- [ ] Guest checkout with Square payment
-- [ ] Order confirmation page + email
-- [ ] Admin: product CRUD with variants
-- [ ] Admin: order list + detail view
-- [ ] Basic responsive design
+- [x] Product catalog page with category filters (`/shop` with DB-driven filter pills)
+- [x] Product detail page with variant selector (`/shop/[slug]` with AddToCart component)
+- [ ] Product photos (upload + display) — schema supports images, admin upload UI missing
+- [x] Shopping cart (localStorage-based, no account needed) (`/cart` with `sm_cart` key)
+- [~] Guest checkout with Square payment — checkout flow built (`/checkout`), Square SDK not wired (orders created as PENDING)
+- [x] Order confirmation page (`/order/[id]`) — email notification not yet wired
+- [x] Admin: product CRUD with variants — create + scent-based generation done; edit/delete missing
+- [x] Admin: order list + detail view (`/admin/orders`)
+- [x] Basic responsive design (StoreLayout with mobile hamburger menu, responsive grids)
+
+**Remaining Phase 1 items:**
+- Square Web Payments SDK integration (payment processing on checkout)
+- Product photo upload in admin
+- Admin product edit + delete
+- Order confirmation email
 
 ### Phase 2 — Inventory + Labels
 *Track what's in stock, print labels*
 
-- [ ] Stock quantity per variant
-- [ ] Low-stock alerts on admin dashboard
+- [x] Stock quantity per variant (built into schema + admin)
+- [x] Low-stock alerts on admin dashboard
 - [ ] Stock adjustment (add batch, manual count)
-- [ ] Auto-deduct on order
+- [x] Auto-deduct on order (checkout API decrements in transaction)
 - [ ] Product label printing (browser print or PDF)
-- [ ] Admin: inventory overview page
+- [x] Admin: inventory overview page (`/admin/inventory`)
 
 ### Phase 3 — Shipping
 *USPS integration for shipped orders*
 
 - [ ] EasyPost (or Pirate Ship) integration
-- [ ] Rate calculator at checkout
-- [ ] Local pickup option
+- [ ] Rate calculator at checkout (currently hardcoded $5.99 flat rate)
+- [x] Local pickup option (checkout toggle, fulfillment type on order)
 - [ ] Shipping label generation (PDF)
-- [ ] Tracking number on order
-- [ ] Order status: PROCESSING → SHIPPED / READY_FOR_PICKUP → DELIVERED / PICKED_UP
+- [ ] Tracking number on order (schema field exists, not populated)
+- [ ] Order status workflow (schema supports full lifecycle, admin UI to advance status missing)
 
 ### Phase 4 — Invoicing + Polish
 *Simple invoices + quality of life*
 
-- [ ] Invoice creation from admin
+- [ ] Invoice creation from admin (schema exists, UI not built)
 - [ ] PDF generation
 - [ ] Email delivery
 - [ ] Invoice status tracking (DRAFT → SENT → PAID)
-- [ ] About page, contact form
+- [x] About page (`/about`)
+- [x] Contact form (`/contact`)
 - [ ] SEO basics (meta tags, sitemap, Open Graph)
 - [ ] Analytics (simple page view counter or Plausible)
 
