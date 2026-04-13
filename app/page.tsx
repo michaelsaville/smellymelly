@@ -1,31 +1,46 @@
 import Link from 'next/link'
+import { prisma } from '@/app/lib/prisma'
+import StoreLayout from '@/app/components/StoreLayout'
 
-export default function HomePage() {
+export const dynamic = 'force-dynamic'
+
+function formatPrice(cents: number) {
+  return `$${(cents / 100).toFixed(2)}`
+}
+
+const categoryEmojis: Record<string, string> = {
+  candles: '🕯️',
+  soaps: '🧼',
+  'bath-bombs': '🛁',
+  'lip-balm': '💋',
+  'beard-balm': '🧔',
+}
+
+export default async function HomePage() {
+  const [categories, featuredProducts] = await Promise.all([
+    prisma.sM_Category.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
+    }),
+    prisma.sM_Product.findMany({
+      where: { isActive: true, isFeatured: true },
+      include: {
+        category: true,
+        variants: {
+          where: { isActive: true },
+          orderBy: { priceCents: 'asc' },
+        },
+        images: {
+          orderBy: { sortOrder: 'asc' },
+          take: 1,
+        },
+      },
+      take: 8,
+    }),
+  ])
+
   return (
-    <div className="min-h-screen">
-      {/* Navigation */}
-      <nav className="border-b border-brand-warm/40 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="font-display text-2xl font-bold text-brand-brown">
-            Smelly Melly
-          </Link>
-          <div className="flex items-center gap-6">
-            <Link href="/shop" className="text-sm font-medium text-brand-brown hover:text-brand-terra transition-colors">
-              Shop
-            </Link>
-            <Link href="/about" className="text-sm font-medium text-brand-brown hover:text-brand-terra transition-colors">
-              About
-            </Link>
-            <Link href="/contact" className="text-sm font-medium text-brand-brown hover:text-brand-terra transition-colors">
-              Contact
-            </Link>
-            <Link href="/cart" className="btn-ghost relative">
-              Cart
-            </Link>
-          </div>
-        </div>
-      </nav>
-
+    <StoreLayout>
       {/* Hero */}
       <section className="bg-gradient-to-b from-brand-cream to-surface-warm py-24 px-6">
         <div className="mx-auto max-w-3xl text-center">
@@ -60,19 +75,15 @@ export default function HomePage() {
           </p>
 
           <div className="mt-12 grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-5">
-            {[
-              { name: 'Candles', emoji: '🕯️' },
-              { name: 'Soaps', emoji: '🧼' },
-              { name: 'Bath Bombs', emoji: '🛁' },
-              { name: 'Lip Balm', emoji: '💋' },
-              { name: 'Beard Balm', emoji: '🧔' },
-            ].map((cat) => (
+            {categories.map((cat) => (
               <Link
-                key={cat.name}
-                href={`/shop?category=${cat.name.toLowerCase().replace(/ /g, '-')}`}
+                key={cat.id}
+                href={`/shop?category=${cat.slug}`}
                 className="card text-center hover:border-brand-terra/40 hover:shadow-md transition-all group"
               >
-                <div className="text-4xl mb-3">{cat.emoji}</div>
+                <div className="text-4xl mb-3">
+                  {categoryEmojis[cat.slug] || '✨'}
+                </div>
                 <div className="font-display text-lg font-semibold text-brand-dark group-hover:text-brand-terra transition-colors">
                   {cat.name}
                 </div>
@@ -82,17 +93,75 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-brand-warm/40 bg-brand-cream py-12 px-6">
-        <div className="mx-auto max-w-6xl flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
-          <div className="font-display text-xl font-bold text-brand-brown">
-            Smelly Melly
+      {/* Featured Products */}
+      {featuredProducts.length > 0 && (
+        <section className="py-20 px-6 bg-brand-cream/50">
+          <div className="mx-auto max-w-6xl">
+            <h2 className="font-display text-3xl font-bold text-brand-dark text-center">
+              Featured Products
+            </h2>
+            <p className="mt-3 text-center text-brand-brown/60">
+              Hand-picked favorites from our collection
+            </p>
+
+            <div className="mt-12 grid grid-cols-2 gap-4 sm:gap-6 md:grid-cols-3 lg:grid-cols-4">
+              {featuredProducts.map((product) => {
+                const image = product.images[0]
+                const prices = product.variants.map((v) => v.priceCents)
+                const minPrice = prices.length > 0 ? Math.min(...prices) : null
+                const maxPrice = prices.length > 0 ? Math.max(...prices) : null
+
+                return (
+                  <Link
+                    key={product.id}
+                    href={`/shop/${product.slug}`}
+                    className="card p-0 overflow-hidden hover:border-brand-terra/40 hover:shadow-md transition-all group"
+                  >
+                    <div className="aspect-square relative bg-gradient-to-br from-brand-peach/30 to-brand-warm overflow-hidden">
+                      {image ? (
+                        <img
+                          src={image.url}
+                          alt={image.altText || product.name}
+                          className="absolute inset-0 h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <span className="text-4xl opacity-40">
+                            {categoryEmojis[product.category?.slug ?? ''] || '✨'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-4">
+                      <h3 className="font-display text-base font-semibold text-brand-dark group-hover:text-brand-terra transition-colors line-clamp-1">
+                        {product.name}
+                      </h3>
+                      {product.scent && (
+                        <p className="mt-0.5 text-xs text-brand-brown/60">{product.scent}</p>
+                      )}
+                      <div className="mt-2 text-sm font-medium text-brand-terra">
+                        {minPrice !== null ? (
+                          minPrice === maxPrice
+                            ? formatPrice(minPrice)
+                            : `From ${formatPrice(minPrice)}`
+                        ) : (
+                          'Price TBD'
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+
+            <div className="mt-10 text-center">
+              <Link href="/shop" className="btn-secondary">
+                View All Products
+              </Link>
+            </div>
           </div>
-          <div className="text-sm text-brand-brown/50">
-            Handmade in West Virginia
-          </div>
-        </div>
-      </footer>
-    </div>
+        </section>
+      )}
+    </StoreLayout>
   )
 }

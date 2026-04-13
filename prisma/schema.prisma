@@ -82,6 +82,20 @@ model SM_ProductImage {
   @@schema("smellymelly")
 }
 
+// ─── SCENTS (reusable scent options) ──────────────────────────────────────
+
+model SM_Scent {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("sm_scents")
+  @@schema("smellymelly")
+}
+
 // ─── ORDERS ───────────────────────────────────────────────────────────────
 
 enum SM_OrderStatus {

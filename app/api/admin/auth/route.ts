@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
   const res = NextResponse.json({ ok: true })
   res.cookies.set('sm_admin', 'sm_authenticated', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.NODE_ENV === 'production' && !process.env.DISABLE_SECURE_COOKIES,
     sameSite: 'lax',
     path: '/',
     maxAge: 60 * 60 * 24 * 7, // 7 days

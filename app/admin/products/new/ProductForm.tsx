@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 type Category = { id: string; name: string }
+type Scent = { id: string; name: string }
 
 interface VariantInput {
   name: string
@@ -23,16 +24,31 @@ const emptyVariant = (): VariantInput => ({
   sku: '',
 })
 
-export function ProductForm({ categories }: { categories: Category[] }) {
+export function ProductForm({
+  categories,
+  scents,
+}: {
+  categories: Category[]
+  scents: Scent[]
+}) {
   const router = useRouter()
   const [name, setName] = useState('')
-  const [scent, setScent] = useState('')
   const [categoryId, setCategoryId] = useState(categories[0]?.id ?? '')
   const [description, setDescription] = useState('')
   const [isFeatured, setIsFeatured] = useState(false)
   const [variants, setVariants] = useState<VariantInput[]>([emptyVariant()])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Scent-based variant generation
+  const [useScents, setUseScents] = useState(false)
+  const [selectedScents, setSelectedScents] = useState<string[]>(
+    scents.map((s) => s.id),
+  )
+  const [scentPrice, setScentPrice] = useState('')
+  const [scentCost, setScentCost] = useState('')
+  const [scentWeight, setScentWeight] = useState('')
+  const [scentStock, setScentStock] = useState('0')
 
   function addVariant() {
     setVariants([...variants, emptyVariant()])
@@ -48,11 +64,69 @@ export function ProductForm({ categories }: { categories: Category[] }) {
     )
   }
 
+  function toggleScent(id: string) {
+    setSelectedScents((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
+    )
+  }
+
+  function selectAllScents() {
+    setSelectedScents(scents.map((s) => s.id))
+  }
+
+  function deselectAllScents() {
+    setSelectedScents([])
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim() || !categoryId) return
     setSubmitting(true)
     setError(null)
+
+    // Build variant list — either from scents or manual
+    let variantData: Array<{
+      name: string
+      priceCents: number
+      costCents: number | null
+      weightOz: number | null
+      stockQuantity: number
+      sku: string | null
+    }>
+
+    if (useScents && selectedScents.length > 0) {
+      const priceCents = Math.round(parseFloat(scentPrice || '0') * 100)
+      const costCents = scentCost
+        ? Math.round(parseFloat(scentCost) * 100)
+        : null
+      const weightOz = scentWeight ? parseFloat(scentWeight) : null
+      const stockQty = parseInt(scentStock || '0', 10)
+
+      variantData = selectedScents.map((scentId) => {
+        const scent = scents.find((s) => s.id === scentId)!
+        return {
+          name: scent.name,
+          priceCents,
+          costCents,
+          weightOz,
+          stockQuantity: stockQty,
+          sku: null,
+        }
+      })
+    } else {
+      variantData = variants
+        .filter((v) => v.name.trim())
+        .map((v) => ({
+          name: v.name.trim(),
+          priceCents: Math.round(parseFloat(v.priceCents || '0') * 100),
+          costCents: v.costCents
+            ? Math.round(parseFloat(v.costCents) * 100)
+            : null,
+          weightOz: v.weightOz ? parseFloat(v.weightOz) : null,
+          stockQuantity: parseInt(v.stockQuantity || '0', 10),
+          sku: v.sku.trim() || null,
+        }))
+    }
 
     try {
       const res = await fetch('/api/admin/products', {
@@ -60,22 +134,11 @@ export function ProductForm({ categories }: { categories: Category[] }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(),
-          scent: scent.trim() || null,
+          scent: null,
           categoryId,
           description: description.trim() || null,
           isFeatured,
-          variants: variants
-            .filter((v) => v.name.trim())
-            .map((v) => ({
-              name: v.name.trim(),
-              priceCents: Math.round(parseFloat(v.priceCents || '0') * 100),
-              costCents: v.costCents
-                ? Math.round(parseFloat(v.costCents) * 100)
-                : null,
-              weightOz: v.weightOz ? parseFloat(v.weightOz) : null,
-              stockQuantity: parseInt(v.stockQuantity || '0', 10),
-              sku: v.sku.trim() || null,
-            })),
+          variants: variantData,
         }),
       })
       const json = await res.json()
@@ -108,25 +171,10 @@ export function ProductForm({ categories }: { categories: Category[] }) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="input"
-              placeholder="e.g., Lavender Dreams Candle"
+              placeholder="e.g., Lip Balm"
               required
             />
           </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-brand-brown">
-              Scent
-            </label>
-            <input
-              type="text"
-              value={scent}
-              onChange={(e) => setScent(e.target.value)}
-              className="input"
-              placeholder="e.g., Lavender Dreams"
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-brand-brown">
               Category *
@@ -144,17 +192,18 @@ export function ProductForm({ categories }: { categories: Category[] }) {
               ))}
             </select>
           </div>
-          <div className="flex items-end">
-            <label className="flex items-center gap-2 text-sm text-brand-brown">
-              <input
-                type="checkbox"
-                checked={isFeatured}
-                onChange={(e) => setIsFeatured(e.target.checked)}
-                className="rounded border-brand-warm text-brand-terra focus:ring-brand-terra"
-              />
-              Featured on homepage
-            </label>
-          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 text-sm text-brand-brown">
+            <input
+              type="checkbox"
+              checked={isFeatured}
+              onChange={(e) => setIsFeatured(e.target.checked)}
+              className="rounded border-brand-warm text-brand-terra focus:ring-brand-terra"
+            />
+            Featured on homepage
+          </label>
         </div>
 
         <div>
@@ -171,49 +220,34 @@ export function ProductForm({ categories }: { categories: Category[] }) {
         </div>
       </div>
 
-      {/* Variants */}
+      {/* Variant mode toggle */}
       <div className="card space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-lg font-semibold text-brand-dark">
             Variants
           </h2>
-          <button type="button" onClick={addVariant} className="btn-ghost text-sm">
-            + Add Variant
-          </button>
+          {scents.length > 0 && (
+            <label className="flex items-center gap-2 text-sm text-brand-brown">
+              <input
+                type="checkbox"
+                checked={useScents}
+                onChange={(e) => setUseScents(e.target.checked)}
+                className="rounded border-brand-warm text-brand-terra focus:ring-brand-terra"
+              />
+              Generate from Scents
+            </label>
+          )}
         </div>
 
-        {variants.map((v, idx) => (
-          <div
-            key={idx}
-            className="rounded-lg border border-brand-warm/60 bg-surface-muted p-4 space-y-3"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-brand-brown">
-                Variant {idx + 1}
-              </span>
-              {variants.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removeVariant(idx)}
-                  className="text-xs text-red-500 hover:text-red-700"
-                >
-                  Remove
-                </button>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <div>
-                <label className="mb-1 block text-xs text-brand-brown/60">
-                  Name *
-                </label>
-                <input
-                  type="text"
-                  value={v.name}
-                  onChange={(e) => updateVariant(idx, 'name', e.target.value)}
-                  className="input text-sm"
-                  placeholder="e.g., 8oz Tin"
-                />
-              </div>
+        {useScents ? (
+          /* Scent-based variant generation */
+          <div className="space-y-4">
+            <p className="text-sm text-brand-brown/60">
+              One variant will be created for each selected scent, all with the same price/cost/weight.
+            </p>
+
+            {/* Base pricing for all scent variants */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div>
                 <label className="mb-1 block text-xs text-brand-brown/60">
                   Price ($) *
@@ -222,10 +256,10 @@ export function ProductForm({ categories }: { categories: Category[] }) {
                   type="number"
                   step="0.01"
                   min="0"
-                  value={v.priceCents}
-                  onChange={(e) => updateVariant(idx, 'priceCents', e.target.value)}
+                  value={scentPrice}
+                  onChange={(e) => setScentPrice(e.target.value)}
                   className="input text-sm"
-                  placeholder="12.00"
+                  placeholder="5.00"
                 />
               </div>
               <div>
@@ -236,10 +270,10 @@ export function ProductForm({ categories }: { categories: Category[] }) {
                   type="number"
                   step="0.01"
                   min="0"
-                  value={v.costCents}
-                  onChange={(e) => updateVariant(idx, 'costCents', e.target.value)}
+                  value={scentCost}
+                  onChange={(e) => setScentCost(e.target.value)}
                   className="input text-sm"
-                  placeholder="4.50"
+                  placeholder="1.50"
                 />
               </div>
               <div>
@@ -250,41 +284,206 @@ export function ProductForm({ categories }: { categories: Category[] }) {
                   type="number"
                   step="0.1"
                   min="0"
-                  value={v.weightOz}
-                  onChange={(e) => updateVariant(idx, 'weightOz', e.target.value)}
+                  value={scentWeight}
+                  onChange={(e) => setScentWeight(e.target.value)}
                   className="input text-sm"
-                  placeholder="8.0"
+                  placeholder="0.5"
                 />
               </div>
               <div>
                 <label className="mb-1 block text-xs text-brand-brown/60">
-                  Stock
+                  Stock (each)
                 </label>
                 <input
                   type="number"
                   min="0"
-                  value={v.stockQuantity}
-                  onChange={(e) =>
-                    updateVariant(idx, 'stockQuantity', e.target.value)
-                  }
+                  value={scentStock}
+                  onChange={(e) => setScentStock(e.target.value)}
                   className="input text-sm"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-brand-brown/60">
-                  SKU
-                </label>
-                <input
-                  type="text"
-                  value={v.sku}
-                  onChange={(e) => updateVariant(idx, 'sku', e.target.value)}
-                  className="input text-sm"
-                  placeholder="LDC-8OZ"
                 />
               </div>
             </div>
+
+            {/* Scent selection */}
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <label className="text-sm font-medium text-brand-brown">
+                  Scents ({selectedScents.length} selected)
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={selectAllScents}
+                    className="text-xs text-brand-terra hover:underline"
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={deselectAllScents}
+                    className="text-xs text-brand-brown/60 hover:underline"
+                  >
+                    None
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {scents.map((scent) => (
+                  <label
+                    key={scent.id}
+                    className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                      selectedScents.includes(scent.id)
+                        ? 'border-brand-terra bg-brand-terra/5 text-brand-dark'
+                        : 'border-brand-warm/60 text-brand-brown/60 hover:border-brand-warm'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedScents.includes(scent.id)}
+                      onChange={() => toggleScent(scent.id)}
+                      className="rounded border-brand-warm text-brand-terra focus:ring-brand-terra"
+                    />
+                    {scent.name}
+                  </label>
+                ))}
+              </div>
+              {scents.length === 0 && (
+                <p className="text-sm text-brand-brown/50">
+                  No scents defined yet.{' '}
+                  <a
+                    href="/admin/scents"
+                    className="text-brand-terra hover:underline"
+                  >
+                    Add scents →
+                  </a>
+                </p>
+              )}
+            </div>
           </div>
-        ))}
+        ) : (
+          /* Manual variants */
+          <div className="space-y-4">
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={addVariant}
+                className="btn-ghost text-sm"
+              >
+                + Add Variant
+              </button>
+            </div>
+
+            {variants.map((v, idx) => (
+              <div
+                key={idx}
+                className="rounded-lg border border-brand-warm/60 bg-surface-muted p-4 space-y-3"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-brand-brown">
+                    Variant {idx + 1}
+                  </span>
+                  {variants.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeVariant(idx)}
+                      className="text-xs text-red-500 hover:text-red-700"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="mb-1 block text-xs text-brand-brown/60">
+                      Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={v.name}
+                      onChange={(e) => updateVariant(idx, 'name', e.target.value)}
+                      className="input text-sm"
+                      placeholder="e.g., 8oz Tin"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-brand-brown/60">
+                      Price ($) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={v.priceCents}
+                      onChange={(e) =>
+                        updateVariant(idx, 'priceCents', e.target.value)
+                      }
+                      className="input text-sm"
+                      placeholder="12.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-brand-brown/60">
+                      Cost ($)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={v.costCents}
+                      onChange={(e) =>
+                        updateVariant(idx, 'costCents', e.target.value)
+                      }
+                      className="input text-sm"
+                      placeholder="4.50"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-brand-brown/60">
+                      Weight (oz)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={v.weightOz}
+                      onChange={(e) =>
+                        updateVariant(idx, 'weightOz', e.target.value)
+                      }
+                      className="input text-sm"
+                      placeholder="8.0"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-brand-brown/60">
+                      Stock
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={v.stockQuantity}
+                      onChange={(e) =>
+                        updateVariant(idx, 'stockQuantity', e.target.value)
+                      }
+                      className="input text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-brand-brown/60">
+                      SKU
+                    </label>
+                    <input
+                      type="text"
+                      value={v.sku}
+                      onChange={(e) => updateVariant(idx, 'sku', e.target.value)}
+                      className="input text-sm"
+                      placeholder="LDC-8OZ"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {error && (

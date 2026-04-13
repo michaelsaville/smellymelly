@@ -14,6 +14,12 @@ export default async function NewProductPage() {
     select: { id: true, name: true },
   })
 
+  const scents = await prisma.sM_Scent.findMany({
+    where: { isActive: true },
+    orderBy: { sortOrder: 'asc' },
+    select: { id: true, name: true },
+  })
+
   // Seed default categories if none exist
   if (categories.length === 0) {
     const defaults = [
@@ -45,7 +51,7 @@ export default async function NewProductPage() {
         New Product
       </h1>
 
-      <ProductForm categories={categories} />
+      <ProductForm categories={categories} scents={scents} />
     </div>
   )
 }
