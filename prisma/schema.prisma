@@ -44,6 +44,7 @@ model SM_Product {
 
   variants SM_ProductVariant[]
   images   SM_ProductImage[]
+  recipes  SM_Recipe[]
 
   @@map("sm_products")
   @@schema("smellymelly")
@@ -224,6 +225,55 @@ model SM_InvoiceItem {
   totalCents  Int
 
   @@map("sm_invoice_items")
+  @@schema("smellymelly")
+}
+
+// ─── RECIPES & MATERIALS (cost of goods) ─────────────────────────────────
+
+model SM_Material {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  packageCostCents Int               // what she paid for the package
+  packageSize     Float              // e.g. 16
+  packageUnit     String             // oz, g, lb, ml, fl_oz, drops, count
+  supplier        String?            // where she buys it
+  notes           String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  recipeItems SM_RecipeItem[]
+
+  @@map("sm_materials")
+  @@schema("smellymelly")
+}
+
+model SM_Recipe {
+  id        String      @id @default(cuid())
+  name      String                    // e.g. "Body Scrub — Lemon Frost"
+  productId String?                   // optional link to SM_Product
+  product   SM_Product? @relation(fields: [productId], references: [id])
+  yields    Int         @default(1)   // how many units one batch makes
+  notes     String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  items SM_RecipeItem[]
+
+  @@map("sm_recipes")
+  @@schema("smellymelly")
+}
+
+model SM_RecipeItem {
+  id         String      @id @default(cuid())
+  recipeId   String
+  recipe     SM_Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  materialId String
+  material   SM_Material @relation(fields: [materialId], references: [id])
+  quantity   Float                    // how much of the material is used
+  unit       String                   // oz, g, lb, ml, fl_oz, drops, count
+
+  @@map("sm_recipe_items")
   @@schema("smellymelly")
 }
 
