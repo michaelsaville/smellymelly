@@ -34,6 +34,7 @@ model SM_Product {
   slug        String      @unique
   description String?
   scent       String?
+  ingredients String?
   categoryId  String
   category    SM_Category @relation(fields: [categoryId], references: [id])
   isActive    Boolean     @default(true)
