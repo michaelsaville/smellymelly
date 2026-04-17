@@ -12,10 +12,13 @@
     "db:generate": "prisma generate"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.90.0",
+    "@easypost/api": "^8.8.0",
     "@prisma/client": "^6.0.0",
     "next": "^15.0.0",
     "react": "^19.2.5",
-    "react-dom": "^19.2.5"
+    "react-dom": "^19.2.5",
+    "square": "^44.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

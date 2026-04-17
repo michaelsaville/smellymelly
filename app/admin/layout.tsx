@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { href: '/admin/inventory', label: 'Inventory' },
   { href: '/admin/materials', label: 'Materials' },
   { href: '/admin/recipes', label: 'Recipes' },
+  { href: '/admin/ai', label: 'AI' },
 ] as const
 
 export default function AdminLayout({
