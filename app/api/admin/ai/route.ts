@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import Anthropic from '@anthropic-ai/sdk'
 import { prisma } from '@/app/lib/prisma'
+import {
+  type Segment,
+  SEGMENT_LABELS,
+  segmentWhere,
+} from '@/app/lib/customer-segments'
 
 async function checkAdmin(): Promise<boolean> {
   const cookieStore = await cookies()
@@ -197,6 +202,111 @@ const tools: Anthropic.Tool[] = [
       required: ['name'],
     },
   },
+
+  // ── CRM tools ─────────────────────────────────────────────────────────
+  {
+    name: 'list_customers',
+    description:
+      'List customers with optional filters. Use this to answer questions like "who are my top customers?", "who hasn\'t ordered in a while?", "who\'s tagged wholesale?". Returns up to `limit` results (default 20), sorted by lifetime spend descending.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        segment: {
+          type: 'string',
+          enum: [
+            'all',
+            'repeat',
+            'big_spenders',
+            'dormant',
+            'pickup_only',
+            'has_shipped',
+            'new',
+          ],
+          description:
+            'Smart segment filter. repeat=2+ orders; big_spenders=$100+ lifetime; dormant=last order 90+ days ago; pickup_only=never shipped; has_shipped=at least one ship order; new=first order within 30 days.',
+        },
+        search: {
+          type: 'string',
+          description: 'Case-insensitive substring match on customer name or email.',
+        },
+        tag: {
+          type: 'string',
+          description: 'Only return customers tagged with this exact tag name.',
+        },
+        limit: {
+          type: 'number',
+          description: 'Max results to return (default 20, max 100).',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_customer',
+    description:
+      'Look up one customer by email or ID. Returns profile, stats, notes, tags, and the last 10 orders.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        email: { type: 'string', description: 'Customer email (case-insensitive).' },
+        customerId: { type: 'string', description: 'Customer ID if known.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'customer_segments_summary',
+    description:
+      'Get counts across every smart segment — useful for a CRM overview ("how many dormant customers do I have?", "what does my customer base look like?").',
+    input_schema: { type: 'object' as const, properties: {}, required: [] },
+  },
+  {
+    name: 'append_customer_note',
+    description:
+      'Append a line to a customer\'s notes (non-destructive — preserves existing notes). Prefixed with the current date.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        email: { type: 'string', description: 'Customer email' },
+        customerId: { type: 'string', description: 'Customer ID (alternative to email)' },
+        note: { type: 'string', description: 'Note to append' },
+      },
+      required: ['note'],
+    },
+  },
+  {
+    name: 'add_customer_tag',
+    description:
+      'Tag a customer. Creates the tag if it doesn\'t exist yet (with a random brand color).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        email: { type: 'string', description: 'Customer email' },
+        customerId: { type: 'string', description: 'Customer ID (alternative to email)' },
+        tagName: { type: 'string', description: 'Tag name to apply' },
+      },
+      required: ['tagName'],
+    },
+  },
+  {
+    name: 'remove_customer_tag',
+    description: 'Remove a tag from a customer.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        email: { type: 'string', description: 'Customer email' },
+        customerId: { type: 'string', description: 'Customer ID (alternative to email)' },
+        tagName: { type: 'string', description: 'Tag name to remove' },
+      },
+      required: ['tagName'],
+    },
+  },
+  {
+    name: 'list_tags',
+    description:
+      'List every tag in the system with a count of how many customers carry it.',
+    input_schema: { type: 'object' as const, properties: {}, required: [] },
+  },
 ]
 
 // ── Tool execution ───────────────────────────────────────────────────────
@@ -207,6 +317,39 @@ function slugify(text: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '')
 }
+
+function money(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`
+}
+
+// Resolve a customer from either `email` or `customerId` inputs. The AI tools
+// accept either so Claude can pass whichever the user provided.
+async function resolveCustomer(
+  input: { email?: string; customerId?: string },
+): Promise<{ id: string; name: string; email: string } | null> {
+  if (input.customerId) {
+    return prisma.sM_Customer.findUnique({
+      where: { id: input.customerId },
+      select: { id: true, name: true, email: true },
+    })
+  }
+  if (input.email) {
+    return prisma.sM_Customer.findUnique({
+      where: { email: input.email.trim().toLowerCase() },
+      select: { id: true, name: true, email: true },
+    })
+  }
+  return null
+}
+
+const BRAND_TAG_COLORS = [
+  '#C67D4A',
+  '#8a7360',
+  '#5b4a3a',
+  '#2e7d5c',
+  '#b8454b',
+  '#4a6fa5',
+]
 
 async function executeTool(
   name: string,
@@ -543,6 +686,238 @@ The business is "Smelly Melly" — a small handmade bath & body products busines
       return JSON.stringify({ success: true, deactivated: scent.name })
     }
 
+    // ── CRM tools ────────────────────────────────────────────────────────
+
+    case 'list_customers': {
+      const segment: Segment = (input.segment as Segment) || 'all'
+      const limit = Math.min(Math.max(input.limit || 20, 1), 100)
+      const baseWhere = segmentWhere(segment, input.search || undefined)
+      const where = input.tag
+        ? {
+            AND: [
+              baseWhere,
+              {
+                tags: {
+                  some: {
+                    tag: { name: { equals: input.tag, mode: 'insensitive' as const } },
+                  },
+                },
+              },
+            ],
+          }
+        : baseWhere
+
+      const customers = await prisma.sM_Customer.findMany({
+        where,
+        orderBy: [{ totalSpentCents: 'desc' }, { lastOrderAt: 'desc' }],
+        take: limit,
+        include: {
+          tags: { include: { tag: { select: { name: true } } } },
+        },
+      })
+
+      return JSON.stringify({
+        segment,
+        segmentLabel: SEGMENT_LABELS[segment],
+        count: customers.length,
+        customers: customers.map((c) => ({
+          id: c.id,
+          name: c.name,
+          email: c.email,
+          phone: c.phone,
+          orderCount: c.orderCount,
+          lifetimeSpend: money(c.totalSpentCents),
+          firstOrderAt: c.firstOrderAt?.toISOString() ?? null,
+          lastOrderAt: c.lastOrderAt?.toISOString() ?? null,
+          tags: c.tags.map((t) => t.tag.name),
+        })),
+      })
+    }
+
+    case 'get_customer': {
+      const resolved = await resolveCustomer(input)
+      if (!resolved) {
+        return JSON.stringify({
+          error: 'Customer not found. Provide email or customerId.',
+        })
+      }
+      const full = await prisma.sM_Customer.findUnique({
+        where: { id: resolved.id },
+        include: {
+          tags: { include: { tag: true } },
+          orders: {
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+            select: {
+              id: true,
+              orderNumber: true,
+              status: true,
+              fulfillment: true,
+              totalCents: true,
+              createdAt: true,
+            },
+          },
+        },
+      })
+      if (!full) return JSON.stringify({ error: 'Customer vanished mid-query' })
+      return JSON.stringify({
+        id: full.id,
+        name: full.name,
+        email: full.email,
+        phone: full.phone,
+        notes: full.notes,
+        stats: {
+          orderCount: full.orderCount,
+          lifetimeSpend: money(full.totalSpentCents),
+          firstOrderAt: full.firstOrderAt?.toISOString() ?? null,
+          lastOrderAt: full.lastOrderAt?.toISOString() ?? null,
+        },
+        tags: full.tags.map((t) => ({ name: t.tag.name, color: t.tag.color })),
+        lastShipTo: full.lastShipAddress
+          ? {
+              name: full.lastShipName,
+              address: full.lastShipAddress,
+              city: full.lastShipCity,
+              state: full.lastShipState,
+              zip: full.lastShipZip,
+            }
+          : null,
+        recentOrders: full.orders.map((o) => ({
+          id: o.id,
+          orderNumber: o.orderNumber,
+          status: o.status,
+          fulfillment: o.fulfillment,
+          total: money(o.totalCents),
+          createdAt: o.createdAt.toISOString(),
+        })),
+      })
+    }
+
+    case 'customer_segments_summary': {
+      const segments: Segment[] = [
+        'all',
+        'repeat',
+        'big_spenders',
+        'dormant',
+        'pickup_only',
+        'has_shipped',
+        'new',
+      ]
+      const counts: Record<string, number> = {}
+      for (const s of segments) {
+        counts[s] = await prisma.sM_Customer.count({ where: segmentWhere(s) })
+      }
+      return JSON.stringify({
+        totals: counts,
+        labels: SEGMENT_LABELS,
+      })
+    }
+
+    case 'append_customer_note': {
+      const resolved = await resolveCustomer(input)
+      if (!resolved) {
+        return JSON.stringify({
+          error: 'Customer not found. Provide email or customerId.',
+        })
+      }
+      if (!input.note?.trim()) {
+        return JSON.stringify({ error: 'note is required' })
+      }
+      const existing = await prisma.sM_Customer.findUnique({
+        where: { id: resolved.id },
+        select: { notes: true },
+      })
+      const date = new Date().toISOString().slice(0, 10)
+      const prefix = existing?.notes ? `${existing.notes}\n` : ''
+      const appended = `${prefix}[${date}] ${input.note.trim()}`
+      await prisma.sM_Customer.update({
+        where: { id: resolved.id },
+        data: { notes: appended },
+      })
+      return JSON.stringify({
+        success: true,
+        customer: resolved.name,
+        newNoteLine: `[${date}] ${input.note.trim()}`,
+      })
+    }
+
+    case 'add_customer_tag': {
+      const resolved = await resolveCustomer(input)
+      if (!resolved) {
+        return JSON.stringify({
+          error: 'Customer not found. Provide email or customerId.',
+        })
+      }
+      const tagName = input.tagName?.trim()
+      if (!tagName) {
+        return JSON.stringify({ error: 'tagName is required' })
+      }
+      // Find or create the tag (case-insensitive match on name).
+      const existingTag = await prisma.sM_Tag.findFirst({
+        where: { name: { equals: tagName, mode: 'insensitive' } },
+      })
+      const tag =
+        existingTag ??
+        (await prisma.sM_Tag.create({
+          data: {
+            name: tagName,
+            color:
+              BRAND_TAG_COLORS[Math.floor(Math.random() * BRAND_TAG_COLORS.length)],
+          },
+        }))
+      await prisma.sM_CustomerTag.upsert({
+        where: { customerId_tagId: { customerId: resolved.id, tagId: tag.id } },
+        create: { customerId: resolved.id, tagId: tag.id },
+        update: {},
+      })
+      return JSON.stringify({
+        success: true,
+        customer: resolved.name,
+        tag: tag.name,
+        created: !existingTag,
+      })
+    }
+
+    case 'remove_customer_tag': {
+      const resolved = await resolveCustomer(input)
+      if (!resolved) {
+        return JSON.stringify({
+          error: 'Customer not found. Provide email or customerId.',
+        })
+      }
+      const tagName = input.tagName?.trim()
+      if (!tagName) return JSON.stringify({ error: 'tagName is required' })
+      const tag = await prisma.sM_Tag.findFirst({
+        where: { name: { equals: tagName, mode: 'insensitive' } },
+      })
+      if (!tag) {
+        return JSON.stringify({ error: `Tag "${tagName}" does not exist` })
+      }
+      const deleted = await prisma.sM_CustomerTag.deleteMany({
+        where: { customerId: resolved.id, tagId: tag.id },
+      })
+      return JSON.stringify({
+        success: true,
+        customer: resolved.name,
+        tag: tag.name,
+        removed: deleted.count > 0,
+      })
+    }
+
+    case 'list_tags': {
+      const tags = await prisma.sM_Tag.findMany({
+        orderBy: { name: 'asc' },
+        include: { _count: { select: { customers: true } } },
+      })
+      return JSON.stringify(
+        tags.map((t) => ({
+          name: t.name,
+          color: t.color,
+          customerCount: t._count.customers,
+        })),
+      )
+    }
+
     default:
       return JSON.stringify({ error: `Unknown tool: ${name}` })
   }
@@ -574,6 +949,18 @@ You can also write product descriptions! If Melly asks you to write a descriptio
 - "simple" — straightforward, brief
 
 When generating a description, show it to Melly first before saving unless she says to just do it. If she says "write descriptions for all my products" you can batch through them.
+
+You also know Melly's customers — rows are auto-created from orders and deduped by email. Use the CRM tools to help her stay close to her repeat buyers:
+- list_customers with segments: "repeat" (2+ orders), "big_spenders" ($100+), "dormant" (no order in 90+ days), "new" (first order within 30 days), "pickup_only", "has_shipped"
+- get_customer for a full profile (stats, recent orders, notes, tags)
+- customer_segments_summary for a CRM overview
+- append_customer_note to log a note (adds a dated line — never overwrites)
+- add_customer_tag / remove_customer_tag (creates the tag if missing)
+- list_tags to see what's already in use
+
+When answering "who are my top customers?", prefer list_customers with a limit of 5–10 — the results are already sorted by lifetime spend. For "who hasn't ordered lately?" use segment=dormant. Be concise — present customers as a short bulleted list with name, order count, and total spend; don't dump raw JSON.
+
+Do NOT attempt to email customers, run marketing campaigns, or text people — those integrations aren't built yet. If Melly asks, tell her it's coming in a future phase and offer to tag or note the customers instead so she has a list ready.
 
 Keep responses concise and conversational. Don't be overly formal.`
 
