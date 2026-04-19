@@ -365,6 +365,12 @@ model SM_Settings {
   zip           String?
   taxRate       Float   @default(0.06)
 
+  // Maintenance / "under construction" mode. When true, public visitors see
+  // the /maintenance page and public APIs (checkout, contact, shipping) 503.
+  // Admins with a valid sm_admin cookie bypass so they can still preview.
+  maintenanceMode    Boolean @default(false)
+  maintenanceMessage String  @default("")
+
   @@map("sm_settings")
   @@schema("smellymelly")
 }

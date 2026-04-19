@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { requireAdmin } from '@/app/lib/admin-auth'
 import { prisma } from '@/app/lib/prisma'
+import MaintenanceToggle from './MaintenanceToggle'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +27,11 @@ export default async function AdminDashboard() {
     }),
   ])
 
+  const settings = await prisma.sM_Settings.findFirst({
+    where: { id: 'singleton' },
+    select: { maintenanceMode: true, maintenanceMessage: true },
+  })
+
   const recentOrders = await prisma.sM_Order.findMany({
     where: { status: { notIn: ['CANCELLED'] } },
     orderBy: { createdAt: 'desc' },
@@ -46,6 +52,13 @@ export default async function AdminDashboard() {
       <h1 className="font-display text-3xl font-bold text-brand-dark">
         Dashboard
       </h1>
+
+      <div className="mt-6">
+        <MaintenanceToggle
+          initialOn={settings?.maintenanceMode ?? false}
+          initialMessage={settings?.maintenanceMessage ?? ''}
+        />
+      </div>
 
       {/* Stats */}
       <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
