@@ -86,6 +86,11 @@ Use a **personal email** you can check for incoming mail during this run.
 Login at `/admin/login` with `ADMIN_PASSWORD`.
 
 - [ ] Dashboard shows recent orders, low-stock callouts
+- [ ] **Site Status card** at the top of the dashboard: flip the
+      maintenance toggle on, open the home page in an incognito tab —
+      should see the "Be right back" page with your custom message.
+      Open the home page while still logged in as admin in a normal
+      tab — should see the real site. Flip the toggle back off when done.
 - [ ] **Products** list loads; editing a product works; adding a variant
       works; uploading a product image works
 - [ ] **Scents** page: add a scent, deactivate one
