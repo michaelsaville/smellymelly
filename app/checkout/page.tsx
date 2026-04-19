@@ -1,13 +1,14 @@
 'use client'
 
-import { useEffect, useState, useCallback, type FormEvent } from 'react'
+import { useEffect, useState, useCallback, useRef, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import StoreLayout from '@/app/components/StoreLayout'
+import SquarePaymentForm from '@/app/components/SquarePaymentForm'
 import { getCart, clearCart, type CartItem } from '@/app/lib/cart'
 
 const TAX_RATE = 0.06
-const SHIPPING_CENTS = 599
+const FALLBACK_SHIPPING_CENTS = 599
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA',
@@ -21,6 +22,14 @@ function formatMoney(cents: number) {
 }
 
 type Fulfillment = 'SHIP' | 'PICKUP'
+
+interface ShippingRate {
+  id: string
+  carrier: string
+  service: string
+  rateCents: number
+  deliveryDays: number | null
+}
 
 export default function CheckoutPage() {
   const router = useRouter()
@@ -40,12 +49,82 @@ export default function CheckoutPage() {
   const [shipState, setShipState] = useState('')
   const [shipZip, setShipZip] = useState('')
 
+  // Shipping rates
+  const [shippingRates, setShippingRates] = useState<ShippingRate[]>([])
+  const [selectedRateId, setSelectedRateId] = useState<string | null>(null)
+  const [fetchingRates, setFetchingRates] = useState(false)
+
+  // Square payment state
+  const [paymentToken, setPaymentToken] = useState<string | null>(null)
+  const [squareConfigured, setSquareConfigured] = useState(false)
+  const tokenResolveRef = useRef<((token: string | null) => void) | null>(null)
+
   const refresh = useCallback(() => setItems(getCart()), [])
 
   useEffect(() => {
     setMounted(true)
     refresh()
+    fetch('/api/square/config')
+      .then((r) => r.json())
+      .then((cfg) => setSquareConfigured(cfg.configured))
+      .catch(() => {})
   }, [refresh])
+
+  // Fetch shipping rates when address is complete
+  const fetchShippingRates = useCallback(async () => {
+    if (!shipAddress || !shipCity || !shipState || !shipZip || items.length === 0) return
+
+    setFetchingRates(true)
+    try {
+      const res = await fetch('/api/shipping/rates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toAddress: { street1: shipAddress, city: shipCity, state: shipState, zip: shipZip },
+          items: items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
+        }),
+      })
+      const data = await res.json()
+      if (data.rates?.length) {
+        setShippingRates(data.rates)
+        // Auto-select cheapest rate
+        if (!selectedRateId || !data.rates.find((r: ShippingRate) => r.id === selectedRateId)) {
+          setSelectedRateId(data.rates[0].id)
+        }
+      }
+    } catch {
+      // Fallback to flat rate
+      setShippingRates([{ id: 'flat', carrier: 'Standard', service: 'Flat Rate', rateCents: FALLBACK_SHIPPING_CENTS, deliveryDays: null }])
+      setSelectedRateId('flat')
+    } finally {
+      setFetchingRates(false)
+    }
+  }, [shipAddress, shipCity, shipState, shipZip, items, selectedRateId])
+
+  // Debounced rate fetch when ZIP changes
+  useEffect(() => {
+    if (fulfillment !== 'SHIP' || !shipZip || shipZip.length < 5) return
+
+    const timer = setTimeout(fetchShippingRates, 500)
+    return () => clearTimeout(timer)
+  }, [fulfillment, shipZip, fetchShippingRates])
+
+  const handleSquareTokenize = useCallback((token: string) => {
+    setPaymentToken(token)
+    if (tokenResolveRef.current) {
+      tokenResolveRef.current(token)
+      tokenResolveRef.current = null
+    }
+  }, [])
+
+  const handleSquareError = useCallback((msg: string) => {
+    setError(msg)
+    setSubmitting(false)
+    if (tokenResolveRef.current) {
+      tokenResolveRef.current(null)
+      tokenResolveRef.current = null
+    }
+  }, [])
 
   if (!mounted) {
     return (
@@ -73,14 +152,38 @@ export default function CheckoutPage() {
   }
 
   const subtotal = items.reduce((sum, i) => sum + i.priceCents * i.quantity, 0)
-  const shipping = fulfillment === 'SHIP' ? SHIPPING_CENTS : 0
+  const selectedRate = shippingRates.find((r) => r.id === selectedRateId)
+  const shipping = fulfillment === 'SHIP'
+    ? (selectedRate?.rateCents ?? FALLBACK_SHIPPING_CENTS)
+    : 0
   const tax = Math.round(subtotal * TAX_RATE)
   const total = subtotal + shipping + tax
+
+  const needsPayment = fulfillment === 'SHIP' && squareConfigured
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
     setSubmitting(true)
+
+    let token = paymentToken
+
+    if (needsPayment && !token) {
+      const el = document.getElementById('square-card-container') as
+        (HTMLElement & { tokenize?: () => Promise<void> }) | null
+      if (el?.tokenize) {
+        const tokenPromise = new Promise<string | null>((resolve) => {
+          tokenResolveRef.current = resolve
+        })
+        await el.tokenize()
+        token = await tokenPromise
+        if (!token) return
+      } else {
+        setError('Payment form not ready. Please wait a moment and try again.')
+        setSubmitting(false)
+        return
+      }
+    }
 
     try {
       const body: Record<string, unknown> = {
@@ -97,6 +200,12 @@ export default function CheckoutPage() {
           state: shipState,
           zip: shipZip,
         }
+        body.shippingRateId = selectedRateId
+        body.shippingCentsOverride = shipping
+      }
+
+      if (token) {
+        body.paymentToken = token
       }
 
       const res = await fetch('/api/checkout', {
@@ -210,8 +319,56 @@ export default function CheckoutPage() {
                     </div>
                   </div>
                 </div>
-                <div className="mt-4 rounded-lg bg-surface-warm px-4 py-3 text-sm text-brand-brown">
-                  Flat rate shipping: {formatMoney(SHIPPING_CENTS)}
+
+                {/* Shipping rate selection */}
+                <div className="mt-4">
+                  {fetchingRates ? (
+                    <div className="rounded-lg bg-surface-warm px-4 py-3 text-sm text-brand-brown animate-pulse">
+                      Calculating shipping rates...
+                    </div>
+                  ) : shippingRates.length > 0 ? (
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-brand-brown">Shipping Method</label>
+                      {shippingRates.map((rate) => (
+                        <label
+                          key={rate.id}
+                          className={`flex items-center justify-between rounded-lg border px-4 py-3 cursor-pointer transition-colors ${
+                            selectedRateId === rate.id
+                              ? 'border-brand-terra bg-brand-terra/5'
+                              : 'border-brand-warm/60 hover:border-brand-warm'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="radio"
+                              name="shippingRate"
+                              value={rate.id}
+                              checked={selectedRateId === rate.id}
+                              onChange={() => setSelectedRateId(rate.id)}
+                              className="text-brand-terra focus:ring-brand-terra"
+                            />
+                            <div>
+                              <span className="text-sm font-medium text-brand-dark">
+                                {rate.carrier} {rate.service}
+                              </span>
+                              {rate.deliveryDays && (
+                                <span className="ml-2 text-xs text-brand-brown/60">
+                                  ({rate.deliveryDays} day{rate.deliveryDays !== 1 ? 's' : ''})
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <span className="text-sm font-semibold text-brand-dark">
+                            {formatMoney(rate.rateCents)}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg bg-surface-warm px-4 py-3 text-sm text-brand-brown">
+                      Flat rate shipping: {formatMoney(FALLBACK_SHIPPING_CENTS)}
+                    </div>
+                  )}
                 </div>
               </section>
             )}
@@ -236,9 +393,11 @@ export default function CheckoutPage() {
                   Pay on pickup. We accept cash and card.
                 </div>
               ) : (
-                <div className="rounded-lg bg-surface-warm px-4 py-3 text-sm text-brand-brown">
-                  Square payment integration coming soon. Your order will be placed as pending and we will reach out with payment instructions.
-                </div>
+                <SquarePaymentForm
+                  onTokenize={handleSquareTokenize}
+                  onError={handleSquareError}
+                  disabled={submitting}
+                />
               )}
             </section>
 
@@ -255,7 +414,7 @@ export default function CheckoutPage() {
               disabled={submitting}
               className="btn-primary w-full py-3 text-base disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {submitting ? 'Placing Order...' : 'Place Order'}
+              {submitting ? 'Placing Order...' : needsPayment ? `Pay ${formatMoney(total)}` : 'Place Order'}
             </button>
           </div>
 
@@ -284,7 +443,7 @@ export default function CheckoutPage() {
                 {fulfillment === 'SHIP' && (
                   <div className="flex justify-between text-brand-brown">
                     <span>Shipping</span>
-                    <span>{formatMoney(shipping)}</span>
+                    <span>{fetchingRates ? '...' : formatMoney(shipping)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-brand-brown/60">

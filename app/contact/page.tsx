@@ -7,12 +7,33 @@ export default function ContactPage() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [message, setMessage] = useState('')
+  const [honeypot, setHoneypot] = useState('')
   const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    // No backend yet — just show a confirmation
-    setSubmitted(true)
+    setError('')
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, message, honeypot }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        setError(err.error || "Couldn't send message. Please try again.")
+        setSubmitting(false)
+        return
+      }
+      setSubmitted(true)
+    } catch {
+      setError("Couldn't send message. Please try again.")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -57,6 +78,17 @@ export default function ContactPage() {
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="card space-y-4">
+                {/* Honeypot — hidden from real users, bots fill it */}
+                <input
+                  type="text"
+                  name="website"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  aria-hidden="true"
+                  value={honeypot}
+                  onChange={(e) => setHoneypot(e.target.value)}
+                  style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }}
+                />
                 <div>
                   <label htmlFor="contactName" className="block text-sm font-medium text-brand-brown mb-1">
                     Name *
@@ -99,8 +131,9 @@ export default function ContactPage() {
                     placeholder="What can I help you with?"
                   />
                 </div>
-                <button type="submit" className="btn-primary w-full">
-                  Send Message
+                {error && <p className="text-sm text-red-600">{error}</p>}
+                <button type="submit" className="btn-primary w-full" disabled={submitting}>
+                  {submitting ? 'Sending…' : 'Send Message'}
                 </button>
               </form>
             )}

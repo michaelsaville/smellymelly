@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
+import { getSquareClient, getSquareLocationId, isSquareConfigured } from '@/app/lib/square'
+import { sendOrderConfirmation } from '@/app/lib/email'
+import { randomUUID } from 'crypto'
 
 interface CheckoutItem {
   variantId: string
@@ -11,6 +14,8 @@ interface CheckoutBody {
   fulfillment: 'SHIP' | 'PICKUP'
   shipping?: { name: string; address: string; city: string; state: string; zip: string }
   items: CheckoutItem[]
+  paymentToken?: string // Square Web Payments SDK nonce
+  shippingCentsOverride?: number // from rate calculation
 }
 
 const SHIPPING_CENTS = 599
@@ -37,6 +42,12 @@ export async function POST(req: NextRequest) {
       if (!s?.name?.trim() || !s?.address?.trim() || !s?.city?.trim() || !s?.state?.trim() || !s?.zip?.trim()) {
         return NextResponse.json({ error: 'Complete shipping address is required for delivery orders.' }, { status: 400 })
       }
+    }
+
+    // Require payment token for shipped orders when Square is configured
+    const squareReady = isSquareConfigured()
+    if (body.fulfillment === 'SHIP' && squareReady && !body.paymentToken) {
+      return NextResponse.json({ error: 'Payment is required for shipped orders.' }, { status: 400 })
     }
 
     // --- Load variants & verify stock ---
@@ -72,7 +83,7 @@ export async function POST(req: NextRequest) {
       const variant = variantMap.get(item.variantId)!
       return {
         variantId: variant.id,
-        productName: variant.name, // We'll get product name from variant relation below
+        productName: variant.name,
         variantName: variant.name,
         quantity: item.quantity,
         unitCents: variant.priceCents,
@@ -96,9 +107,41 @@ export async function POST(req: NextRequest) {
     }
 
     const subtotalCents = orderItems.reduce((sum, i) => sum + i.totalCents, 0)
-    const shippingCents = body.fulfillment === 'SHIP' ? SHIPPING_CENTS : 0
+    const shippingCents = body.fulfillment === 'SHIP'
+      ? (body.shippingCentsOverride && body.shippingCentsOverride > 0
+          ? body.shippingCentsOverride
+          : SHIPPING_CENTS)
+      : 0
     const taxCents = Math.round(subtotalCents * taxRate)
     const totalCents = subtotalCents + shippingCents + taxCents
+
+    // --- Process Square payment if token provided ---
+    let squarePaymentId: string | null = null
+    if (body.paymentToken && squareReady) {
+      try {
+        const square = getSquareClient()
+        const paymentResult = await square.payments.create({
+          sourceId: body.paymentToken,
+          idempotencyKey: randomUUID(),
+          amountMoney: {
+            amount: BigInt(totalCents),
+            currency: 'USD',
+          },
+          locationId: getSquareLocationId(),
+          buyerEmailAddress: body.customer.email.trim(),
+          note: `Smelly Melly order for ${body.customer.name.trim()}`,
+        })
+
+        if (!paymentResult.payment?.id) {
+          return NextResponse.json({ error: 'Payment processing failed. Please try again.' }, { status: 400 })
+        }
+
+        squarePaymentId = paymentResult.payment.id
+      } catch (err) {
+        console.error('Square payment error:', err)
+        return NextResponse.json({ error: 'Payment failed. Please check your card details and try again.' }, { status: 400 })
+      }
+    }
 
     // --- Create order + items + deduct stock in a transaction ---
     const order = await prisma.$transaction(async (tx) => {
@@ -113,7 +156,7 @@ export async function POST(req: NextRequest) {
       // Create order with items
       const created = await tx.sM_Order.create({
         data: {
-          status: 'PENDING',
+          status: squarePaymentId ? 'PAID' : 'PENDING',
           fulfillment: body.fulfillment,
           customerName: body.customer.name.trim(),
           customerEmail: body.customer.email.trim(),
@@ -127,6 +170,8 @@ export async function POST(req: NextRequest) {
           shippingCents,
           taxCents,
           totalCents,
+          squarePaymentId,
+          paidAt: squarePaymentId ? new Date() : null,
           items: {
             create: orderItems.map((oi) => ({
               variantId: oi.variantId,
@@ -142,6 +187,18 @@ export async function POST(req: NextRequest) {
 
       return created
     })
+
+    // Fire-and-forget order-confirmation email. A mail failure must never
+    // fail the checkout — the order is already persisted and charged.
+    const fullOrder = await prisma.sM_Order.findUnique({
+      where: { id: order.id },
+      include: { items: true },
+    })
+    if (fullOrder) {
+      sendOrderConfirmation(fullOrder).catch((err) => {
+        console.error(`[email] order-confirm for ${fullOrder.id} failed:`, err)
+      })
+    }
 
     return NextResponse.json({ orderId: order.id, orderNumber: order.orderNumber })
   } catch (err) {
