@@ -1,4 +1,11 @@
+import type { Metadata } from 'next'
 import StoreLayout from '@/app/components/StoreLayout'
+
+export const metadata: Metadata = {
+  title: 'About',
+  description:
+    'Meet Mel — the maker behind Smelly Melly. Small-batch bath and body products handcrafted in the mountains of West Virginia.',
+}
 
 export default function AboutPage() {
   return (

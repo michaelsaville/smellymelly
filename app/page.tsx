@@ -53,7 +53,7 @@ export default async function HomePage() {
             Small-batch candles, soaps, bath bombs, and body care products —
             made by hand in West Virginia.
           </p>
-          <div className="mt-10 flex items-center justify-center gap-4">
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <Link href="/shop" className="btn-primary text-base px-8 py-3">
               Shop Now
             </Link>

@@ -126,24 +126,55 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
 
       {/* Footer */}
       <footer className="border-t border-brand-warm/40 bg-brand-cream py-12 px-6">
-        <div className="mx-auto max-w-6xl flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
-          <div className="font-display text-xl font-bold text-brand-brown">
-            Smelly Melly
+        <div className="mx-auto max-w-6xl grid gap-6 sm:grid-cols-3 sm:items-start">
+          <div>
+            <div className="font-display text-xl font-bold text-brand-brown">
+              Smelly Melly
+            </div>
+            <div className="mt-1 text-sm text-brand-brown/50">
+              Handmade in West Virginia
+            </div>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex flex-col gap-2 sm:items-center">
+            <div className="text-xs font-medium uppercase tracking-wider text-brand-brown/40">
+              Shop
+            </div>
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="text-sm text-brand-brown/60 hover:text-brand-terra transition-colors"
+                className="text-sm text-brand-brown/70 hover:text-brand-terra transition-colors"
               >
                 {link.label}
               </Link>
             ))}
           </div>
-          <div className="text-sm text-brand-brown/50">
-            Handmade in West Virginia
+          <div className="flex flex-col gap-2 sm:items-end">
+            <div className="text-xs font-medium uppercase tracking-wider text-brand-brown/40">
+              Policies
+            </div>
+            <Link
+              href="/terms"
+              className="text-sm text-brand-brown/70 hover:text-brand-terra transition-colors"
+            >
+              Terms of Service
+            </Link>
+            <Link
+              href="/privacy"
+              className="text-sm text-brand-brown/70 hover:text-brand-terra transition-colors"
+            >
+              Privacy Policy
+            </Link>
+            <Link
+              href="/refund-policy"
+              className="text-sm text-brand-brown/70 hover:text-brand-terra transition-colors"
+            >
+              Refund &amp; Returns
+            </Link>
           </div>
+        </div>
+        <div className="mx-auto max-w-6xl mt-8 pt-6 border-t border-brand-warm/30 text-center text-xs text-brand-brown/40">
+          &copy; {new Date().getFullYear()} Smelly Melly. All rights reserved.
         </div>
       </footer>
     </div>

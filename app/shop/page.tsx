@@ -1,6 +1,13 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { prisma } from '@/app/lib/prisma'
 import StoreLayout from '@/app/components/StoreLayout'
+
+export const metadata: Metadata = {
+  title: 'Shop',
+  description:
+    'Browse our full lineup of handmade candles, soaps, bath bombs, lip balm, and beard balm — all crafted in small batches.',
+}
 
 export const dynamic = 'force-dynamic'
 

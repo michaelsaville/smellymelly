@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { prisma } from '@/app/lib/prisma'
@@ -8,6 +9,41 @@ export const dynamic = 'force-dynamic'
 
 function formatPrice(cents: number) {
   return `$${(cents / 100).toFixed(2)}`
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>
+}): Promise<Metadata> {
+  const { slug } = await params
+  const product = await prisma.sM_Product.findFirst({
+    where: { slug, isActive: true },
+    include: { images: { orderBy: { sortOrder: 'asc' }, take: 1 } },
+  })
+  if (!product) return { title: 'Product not found' }
+
+  const description =
+    product.description?.slice(0, 160) ||
+    `${product.name} — handmade by Smelly Melly.`
+  const image = product.images[0]?.url
+
+  return {
+    title: product.name,
+    description,
+    openGraph: {
+      type: 'website',
+      title: product.name,
+      description,
+      images: image ? [{ url: image }] : undefined,
+    },
+    twitter: {
+      card: image ? 'summary_large_image' : 'summary',
+      title: product.name,
+      description,
+      images: image ? [image] : undefined,
+    },
+  }
 }
 
 export default async function ProductPage({
