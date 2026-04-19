@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { requireAdmin } from '@/app/lib/admin-auth'
 import { prisma } from '@/app/lib/prisma'
 
@@ -47,7 +48,12 @@ export default async function OrdersPage() {
               {orders.map((o) => (
                 <tr key={o.id} className="hover:bg-surface-muted">
                   <td className="px-4 py-3 font-medium text-brand-dark">
-                    #{o.orderNumber}
+                    <Link
+                      href={`/admin/orders/${o.id}`}
+                      className="hover:text-brand-terra"
+                    >
+                      #{o.orderNumber}
+                    </Link>
                   </td>
                   <td className="px-4 py-3">
                     <div className="text-brand-dark">{o.customerName}</div>
@@ -84,7 +90,13 @@ export default async function OrdersPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right text-xs text-brand-brown/50">
-                    {o.createdAt.toLocaleDateString()}
+                    <div>{o.createdAt.toLocaleDateString()}</div>
+                    <Link
+                      href={`/admin/orders/${o.id}`}
+                      className="text-brand-terra hover:underline mt-0.5 inline-block"
+                    >
+                      View →
+                    </Link>
                   </td>
                 </tr>
               ))}

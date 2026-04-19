@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { prisma } from '@/app/lib/prisma'
 import { getEasyPostClient, getFromAddress, isEasyPostConfigured } from '@/app/lib/easypost'
+import { sendShippingNotification } from '@/app/lib/email'
 
 async function checkAdmin(): Promise<boolean> {
   const cookieStore = await cookies()
@@ -81,7 +82,7 @@ export async function POST(req: NextRequest) {
     const purchased = await easypost.Shipment.buy(shipment.id, selectedRate.id)
 
     // Update order with tracking info
-    await prisma.sM_Order.update({
+    const updated = await prisma.sM_Order.update({
       where: { id: order.id },
       data: {
         trackingNumber: purchased.tracking_code || null,
@@ -89,7 +90,15 @@ export async function POST(req: NextRequest) {
         status: 'SHIPPED',
         shippedAt: new Date(),
       },
+      include: { items: true },
     })
+
+    // Fire-and-forget shipping email. Mail failure must not fail label purchase.
+    if (updated.trackingNumber) {
+      sendShippingNotification(updated).catch((err) => {
+        console.error(`[email] ship-notif for ${updated.id} failed:`, err)
+      })
+    }
 
     return NextResponse.json({
       trackingNumber: purchased.tracking_code,
