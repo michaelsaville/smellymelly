@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
 import { getSquareClient, getSquareLocationId, isSquareConfigured } from '@/app/lib/square'
 import { sendOrderConfirmation } from '@/app/lib/email'
+import { upsertCustomerFromOrder } from '@/app/lib/customers'
 import { randomUUID } from 'crypto'
 
 interface CheckoutItem {
@@ -187,6 +188,15 @@ export async function POST(req: NextRequest) {
 
       return created
     })
+
+    // Link to a customer row (dedupe by email) + refresh denormalized stats.
+    // Awaited so the customer is queryable immediately after checkout, but
+    // wrapped so a CRM hiccup never fails the order.
+    try {
+      await upsertCustomerFromOrder(order)
+    } catch (err) {
+      console.error(`[crm] upsert for order ${order.id} failed:`, err)
+    }
 
     // Fire-and-forget order-confirmation email. A mail failure must never
     // fail the checkout — the order is already persisted and charged.

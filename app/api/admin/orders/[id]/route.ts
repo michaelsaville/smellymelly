@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { prisma } from '@/app/lib/prisma'
 import { sendShippingNotification } from '@/app/lib/email'
+import { recomputeCustomerStats } from '@/app/lib/customers'
 import type { SM_OrderStatus } from '@prisma/client'
 
 async function checkAdmin(): Promise<boolean> {
@@ -78,6 +79,14 @@ export async function PATCH(
   if (nowShipped && updated.trackingNumber) {
     sendShippingNotification(updated).catch((err) => {
       console.error(`[email] ship-notif for ${updated.id} failed:`, err)
+    })
+  }
+
+  // Keep denormalized CRM stats in sync when the counted/uncounted transition
+  // could flip (any status change is cheap enough to just always recompute).
+  if (body.status && existing.status !== body.status && updated.customerId) {
+    recomputeCustomerStats(updated.customerId).catch((err) => {
+      console.error(`[crm] recompute for ${updated.customerId} failed:`, err)
     })
   }
 

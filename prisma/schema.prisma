@@ -14,13 +14,13 @@ datasource db {
 // ─── PRODUCTS ─────────────────────────────────────────────────────────────
 
 model SM_Category {
-  id        String    @id @default(cuid())
-  name      String    @unique
-  slug      String    @unique
-  sortOrder Int       @default(0)
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   products SM_Product[]
 
@@ -110,25 +110,31 @@ enum SM_OrderStatus {
   PICKED_UP
   CANCELLED
   REFUNDED
+
   @@schema("smellymelly")
 }
 
 enum SM_FulfillmentType {
   SHIP
   PICKUP
+
   @@schema("smellymelly")
 }
 
 model SM_Order {
-  id              String             @id @default(cuid())
-  orderNumber     Int                @unique @default(autoincrement())
-  status          SM_OrderStatus     @default(PENDING)
-  fulfillment     SM_FulfillmentType
+  id          String             @id @default(cuid())
+  orderNumber Int                @unique @default(autoincrement())
+  status      SM_OrderStatus     @default(PENDING)
+  fulfillment SM_FulfillmentType
 
-  // Customer info (guest checkout — no account)
-  customerName    String
-  customerEmail   String
-  customerPhone   String?
+  // Customer (populated post-checkout by upsertCustomerFromOrder)
+  customerId String?
+  customer   SM_Customer? @relation(fields: [customerId], references: [id])
+
+  // Snapshot of customer info at time of order (source of truth for the order)
+  customerName  String
+  customerEmail String
+  customerPhone String?
 
   // Shipping (null for pickup)
   shippingName    String?
@@ -138,25 +144,25 @@ model SM_Order {
   shippingZip     String?
 
   // Money (all in cents)
-  subtotalCents   Int
-  shippingCents   Int       @default(0)
-  taxCents        Int       @default(0)
-  totalCents      Int
+  subtotalCents Int
+  shippingCents Int @default(0)
+  taxCents      Int @default(0)
+  totalCents    Int
 
   // Square payment
   squarePaymentId String?
   squareOrderId   String?
 
   // Shipping
-  trackingNumber  String?
-  shippingLabel   String?
-  shippedAt       DateTime?
+  trackingNumber String?
+  shippingLabel  String?
+  shippedAt      DateTime?
 
   // Timestamps
-  paidAt          DateTime?
-  cancelledAt     DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  paidAt      DateTime?
+  cancelledAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   items SM_OrderItem[]
 
@@ -180,6 +186,65 @@ model SM_OrderItem {
   @@schema("smellymelly")
 }
 
+// ─── CUSTOMERS (CRM) ──────────────────────────────────────────────────────
+
+model SM_Customer {
+  id    String  @id @default(cuid())
+  // Always stored lowercased + trimmed; unique dedupe key.
+  email String  @unique
+  name  String
+  phone String?
+  notes String  @default("")
+
+  // Denormalized stats — maintained by recomputeCustomerStats(email).
+  // PAID-or-later orders only; CANCELLED/REFUNDED excluded from totals.
+  orderCount      Int       @default(0)
+  totalSpentCents Int       @default(0)
+  firstOrderAt    DateTime?
+  lastOrderAt     DateTime?
+
+  // Last-known ship-to snapshot (from most recent SHIP order).
+  lastShipName    String?
+  lastShipAddress String?
+  lastShipCity    String?
+  lastShipState   String?
+  lastShipZip     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders SM_Order[]
+  tags   SM_CustomerTag[]
+
+  @@map("sm_customers")
+  @@schema("smellymelly")
+}
+
+model SM_Tag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String   @default("#C67D4A")
+  createdAt DateTime @default(now())
+
+  customers SM_CustomerTag[]
+
+  @@map("sm_tags")
+  @@schema("smellymelly")
+}
+
+model SM_CustomerTag {
+  customerId String
+  tagId      String
+  createdAt  DateTime @default(now())
+
+  customer SM_Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tag      SM_Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([customerId, tagId])
+  @@map("sm_customer_tags")
+  @@schema("smellymelly")
+}
+
 // ─── INVOICES ─────────────────────────────────────────────────────────────
 
 enum SM_InvoiceStatus {
@@ -187,6 +252,7 @@ enum SM_InvoiceStatus {
   SENT
   PAID
   CANCELLED
+
   @@schema("smellymelly")
 }
 
@@ -200,14 +266,14 @@ model SM_Invoice {
   customerEmail String?
 
   subtotalCents Int
-  taxCents      Int       @default(0)
+  taxCents      Int @default(0)
   totalCents    Int
 
-  notes         String?
-  sentAt        DateTime?
-  paidAt        DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  notes     String?
+  sentAt    DateTime?
+  paidAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   items SM_InvoiceItem[]
 
@@ -231,16 +297,16 @@ model SM_InvoiceItem {
 // ─── RECIPES & MATERIALS (cost of goods) ─────────────────────────────────
 
 model SM_Material {
-  id              String   @id @default(cuid())
-  name            String   @unique
-  packageCostCents Int               // what she paid for the package
-  packageSize     Float              // e.g. 16
-  packageUnit     String             // oz, g, lb, ml, fl_oz, drops, count
-  supplier        String?            // where she buys it
-  notes           String?
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String   @id @default(cuid())
+  name             String   @unique
+  packageCostCents Int // what she paid for the package
+  packageSize      Float // e.g. 16
+  packageUnit      String // oz, g, lb, ml, fl_oz, drops, count
+  supplier         String? // where she buys it
+  notes            String?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   recipeItems SM_RecipeItem[]
 
@@ -250,10 +316,10 @@ model SM_Material {
 
 model SM_Recipe {
   id        String      @id @default(cuid())
-  name      String                    // e.g. "Body Scrub — Lemon Frost"
-  productId String?                   // optional link to SM_Product
+  name      String // e.g. "Body Scrub — Lemon Frost"
+  productId String? // optional link to SM_Product
   product   SM_Product? @relation(fields: [productId], references: [id])
-  yields    Int         @default(1)   // how many units one batch makes
+  yields    Int         @default(1) // how many units one batch makes
   notes     String?
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
@@ -270,8 +336,8 @@ model SM_RecipeItem {
   recipe     SM_Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
   materialId String
   material   SM_Material @relation(fields: [materialId], references: [id])
-  quantity   Float                    // how much of the material is used
-  unit       String                   // oz, g, lb, ml, fl_oz, drops, count
+  quantity   Float // how much of the material is used
+  unit       String // oz, g, lb, ml, fl_oz, drops, count
 
   @@map("sm_recipe_items")
   @@schema("smellymelly")
