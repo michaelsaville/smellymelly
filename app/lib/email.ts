@@ -198,6 +198,74 @@ Tracking: <strong>${escapeHtml(order.trackingNumber)}</strong>
   await send({ to: order.customerEmail, subject, text, html })
 }
 
+// ─── Phase 7 senders (thank-you, re-engagement, birthday) ──────────────
+
+interface CustomerLike {
+  name: string
+  email: string
+}
+
+export async function sendThankYouEmail(customer: CustomerLike): Promise<void> {
+  const subject = `Thanks for trying Smelly Melly, ${customer.name.split(' ')[0]}!`
+  const text = `Hi ${customer.name},
+
+It's been about a week since your first Smelly Melly order, and I just wanted to say thanks. Every package I send out is something I'm proud of — it means a lot that you gave us a try.
+
+If you loved what you got, I'd be so grateful if you'd share it with a friend or come back and try a new scent. If something wasn't quite right, please reply and tell me — I read every message.
+
+— Mel
+${STORE_URL}`
+  const html = wrap(
+    `Thanks for giving us a try!`,
+    `<p>Hi ${escapeHtml(customer.name)},</p>
+<p>It's been about a week since your first Smelly Melly order, and I just wanted to say thanks. Every package I send out is something I'm proud of — it means a lot that you gave us a try.</p>
+<p>If you loved what you got, I'd be so grateful if you shared it with a friend or came back and tried a new scent. If something wasn't quite right, please reply and tell me — I read every message.</p>
+<p style="margin:24px 0 0">— Mel</p>`,
+  )
+  await send({ to: customer.email, subject, text, html })
+}
+
+export async function sendReEngagementEmail(customer: CustomerLike): Promise<void> {
+  const subject = `We miss you at Smelly Melly 💐`
+  const text = `Hi ${customer.name},
+
+It's been a while! I've been making new scents and experimenting with some fun recipes since we last saw you. If you're due for a restock — or curious what's new — come take a peek.
+
+Thanks for being part of the Smelly Melly story.
+
+— Mel
+${STORE_URL}`
+  const html = wrap(
+    `We miss you!`,
+    `<p>Hi ${escapeHtml(customer.name)},</p>
+<p>It's been a while! I've been making new scents and experimenting with some fun recipes since we last saw you. If you're due for a restock — or curious what's new — come take a peek.</p>
+<p style="margin:24px 0"><a href="${STORE_URL}/shop" style="display:inline-block;background:#C67D4A;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:500">See what's new</a></p>
+<p>Thanks for being part of the Smelly Melly story.</p>
+<p style="margin:24px 0 0">— Mel</p>`,
+  )
+  await send({ to: customer.email, subject, text, html })
+}
+
+export async function sendBirthdayEmail(customer: CustomerLike): Promise<void> {
+  const subject = `Happy birthday, ${customer.name.split(' ')[0]}! 🎂`
+  const text = `Happy birthday, ${customer.name}!
+
+Hope your day is full of people who love you, your favorite foods, and a little bit of magic.
+
+Thanks for being part of the Smelly Melly family.
+
+— Mel
+${STORE_URL}`
+  const html = wrap(
+    `Happy birthday!`,
+    `<p>Happy birthday, ${escapeHtml(customer.name)}! 🎂</p>
+<p>Hope your day is full of people who love you, your favorite foods, and a little bit of magic.</p>
+<p>Thanks for being part of the Smelly Melly family.</p>
+<p style="margin:24px 0 0">— Mel</p>`,
+  )
+  await send({ to: customer.email, subject, text, html })
+}
+
 export async function sendContactFormRelay(input: {
   name: string
   email: string

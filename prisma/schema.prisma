@@ -210,6 +210,15 @@ model SM_Customer {
   lastShipState   String?
   lastShipZip     String?
 
+  // Phase 7 — wholesale + birthdays + email-broadcast tracking.
+  // wholesaleDiscountPct is applied on the subtotal at checkout (0-100).
+  birthday             DateTime?
+  wholesaleDiscountPct Int        @default(0)
+  thankYouEmailSentAt  DateTime?
+  lastReEngagementAt   DateTime?
+  // Year of the last birthday email sent so we only send once per year.
+  lastBirthdayEmailYear Int?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

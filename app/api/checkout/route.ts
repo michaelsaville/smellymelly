@@ -107,7 +107,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const subtotalCents = orderItems.reduce((sum, i) => sum + i.totalCents, 0)
+    const rawSubtotalCents = orderItems.reduce((sum, i) => sum + i.totalCents, 0)
+
+    // Wholesale discount lookup. Applied BEFORE tax and shipping.
+    // Email match is case-insensitive (SM_Customer stores lowercased).
+    const existingCustomer = await prisma.sM_Customer.findUnique({
+      where: { email: body.customer.email.trim().toLowerCase() },
+      select: { wholesaleDiscountPct: true },
+    })
+    const wholesalePct = existingCustomer?.wholesaleDiscountPct ?? 0
+    const wholesaleDiscountCents =
+      wholesalePct > 0 ? Math.round((rawSubtotalCents * wholesalePct) / 100) : 0
+    const subtotalCents = rawSubtotalCents - wholesaleDiscountCents
+
     const shippingCents = body.fulfillment === 'SHIP'
       ? (body.shippingCentsOverride && body.shippingCentsOverride > 0
           ? body.shippingCentsOverride

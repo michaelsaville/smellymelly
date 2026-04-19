@@ -6,6 +6,7 @@ import {
   SEGMENT_LABELS,
   segmentWhere,
 } from '@/app/lib/customer-segments'
+import BroadcastsCard from './BroadcastsCard'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,7 +69,15 @@ export default async function CustomersPage({
             {totalCount} total · showing {customers.length}
           </p>
         </div>
+        <a
+          href={`/api/admin/customers/export?segment=${segment}${search ? `&q=${encodeURIComponent(search)}` : ''}`}
+          className="btn-secondary text-sm"
+        >
+          Export CSV
+        </a>
       </div>
+
+      <BroadcastsCard />
 
       {/* Filters */}
       <form

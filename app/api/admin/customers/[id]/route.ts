@@ -9,6 +9,8 @@ async function checkAdmin(): Promise<boolean> {
 
 interface PatchBody {
   notes?: string
+  birthday?: string | null
+  wholesaleDiscountPct?: number
 }
 
 export async function PATCH(
@@ -22,8 +24,38 @@ export async function PATCH(
   const { id } = await params
   const body = (await req.json()) as PatchBody
 
-  const data: { notes?: string } = {}
+  const data: {
+    notes?: string
+    birthday?: Date | null
+    wholesaleDiscountPct?: number
+  } = {}
+
   if (typeof body.notes === 'string') data.notes = body.notes
+
+  if (body.birthday !== undefined) {
+    if (body.birthday === null || body.birthday === '') {
+      data.birthday = null
+    } else {
+      // Expect "YYYY-MM-DD" from the HTML date input; anchor to UTC noon so
+      // the birthday-check's month+day comparison is stable across tz shifts.
+      const parsed = new Date(`${body.birthday}T12:00:00Z`)
+      if (Number.isNaN(parsed.getTime())) {
+        return NextResponse.json({ error: 'Invalid birthday' }, { status: 400 })
+      }
+      data.birthday = parsed
+    }
+  }
+
+  if (body.wholesaleDiscountPct !== undefined) {
+    const pct = Number(body.wholesaleDiscountPct)
+    if (!Number.isInteger(pct) || pct < 0 || pct > 100) {
+      return NextResponse.json(
+        { error: 'wholesaleDiscountPct must be an integer between 0 and 100' },
+        { status: 400 },
+      )
+    }
+    data.wholesaleDiscountPct = pct
+  }
 
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 })

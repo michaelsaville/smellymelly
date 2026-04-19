@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { requireAdmin } from '@/app/lib/admin-auth'
 import { prisma } from '@/app/lib/prisma'
 import CustomerEditor from './CustomerEditor'
+import ActivityTimeline from './ActivityTimeline'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,6 +44,9 @@ export default async function CustomerDetailPage({
           fulfillment: true,
           totalCents: true,
           createdAt: true,
+          paidAt: true,
+          shippedAt: true,
+          cancelledAt: true,
         },
       },
     },
@@ -175,8 +179,13 @@ export default async function CustomerDetailPage({
           <CustomerEditor
             customerId={customer.id}
             initialNotes={customer.notes}
+            initialBirthday={customer.birthday?.toISOString().slice(0, 10) ?? ''}
+            initialWholesaleDiscountPct={customer.wholesaleDiscountPct}
             allTags={allTags}
             appliedTagIds={Array.from(appliedTagIds)}
+            thankYouSentAt={customer.thankYouEmailSentAt?.toISOString() ?? null}
+            lastReEngagementAt={customer.lastReEngagementAt?.toISOString() ?? null}
+            lastBirthdayEmailYear={customer.lastBirthdayEmailYear}
           />
 
           {customer.lastShipAddress && (
@@ -195,6 +204,17 @@ export default async function CustomerDetailPage({
             </div>
           )}
         </div>
+      </div>
+
+      <div className="mt-6">
+        <ActivityTimeline
+          orders={customer.orders}
+          notes={customer.notes}
+          customerCreatedAt={customer.createdAt}
+          thankYouEmailSentAt={customer.thankYouEmailSentAt}
+          lastReEngagementAt={customer.lastReEngagementAt}
+          lastBirthdayEmailYear={customer.lastBirthdayEmailYear}
+        />
       </div>
     </div>
   )
