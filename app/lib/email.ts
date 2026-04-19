@@ -1,4 +1,5 @@
 import nodemailer, { type Transporter } from 'nodemailer'
+import { prisma } from './prisma'
 import type { SM_Order, SM_OrderItem } from '@prisma/client'
 
 // ─── Config ─────────────────────────────────────────────────────────────
@@ -106,7 +107,59 @@ export async function sendOrderConfirmation(
 ): Promise<void> {
   const { text: itemsText, html: itemsHtml } = orderTable(order.items)
   const orderNum = String(order.orderNumber).padStart(4, '0')
-  const subject = `Order #${orderNum} — thanks for your order!`
+  const isManual = order.paymentMethod === 'MANUAL'
+  const subject = isManual
+    ? `Order #${orderNum} — payment instructions inside`
+    : `Order #${orderNum} — thanks for your order!`
+
+  // For manual orders, pull the payment handles from settings so the buyer
+  // gets the Venmo / Cash App info in the confirmation email.
+  let paymentText = ''
+  let paymentHtml = ''
+  if (isManual) {
+    const s = await prisma.sM_Settings.findFirst({
+      where: { id: 'singleton' },
+      select: {
+        venmoHandle: true,
+        cashAppTag: true,
+        paymentInstructions: true,
+      },
+    })
+    const venmo = s?.venmoHandle?.trim()
+    const cashApp = s?.cashAppTag?.trim()
+    const extra = s?.paymentInstructions?.trim()
+
+    const lines: string[] = [
+      `\n=== HOW TO PAY ===`,
+      `Your order is pending payment. Please send ${money(order.totalCents)} with #${orderNum} in the memo.`,
+    ]
+    if (venmo) lines.push(`Venmo: ${venmo}`)
+    if (cashApp) lines.push(`Cash App: ${cashApp}`)
+    if (!venmo && !cashApp) {
+      lines.push(`I'll follow up with payment details shortly.`)
+    }
+    if (extra) lines.push(`\n${extra}`)
+    paymentText = lines.join('\n') + '\n'
+
+    const htmlRows: string[] = []
+    if (venmo) {
+      htmlRows.push(
+        `<li style="margin:4px 0"><strong>Venmo:</strong> <span style="font-family:monospace;color:#C67D4A">${escapeHtml(venmo)}</span></li>`,
+      )
+    }
+    if (cashApp) {
+      htmlRows.push(
+        `<li style="margin:4px 0"><strong>Cash App:</strong> <span style="font-family:monospace;color:#C67D4A">${escapeHtml(cashApp)}</span></li>`,
+      )
+    }
+    paymentHtml = `
+<div style="margin:24px 0;padding:16px;background:#fef3e2;border:1px solid #fbbf24;border-radius:8px">
+<p style="margin:0 0 8px;font-weight:bold;color:#92400e">How to pay</p>
+<p style="margin:0 0 12px;font-size:14px">Your order is pending payment. Please send <strong>${money(order.totalCents)}</strong> with <strong>#${orderNum}</strong> in the memo.</p>
+${htmlRows.length ? `<ul style="margin:0;padding-left:20px;font-size:14px">${htmlRows.join('')}</ul>` : `<p style="margin:0;font-size:14px">I'll follow up with payment details shortly.</p>`}
+${extra ? `<p style="margin:12px 0 0;padding-top:12px;border-top:1px solid #fbbf24;font-size:13px;white-space:pre-wrap">${escapeHtml(extra)}</p>` : ''}
+</div>`
+  }
 
   const totalsText = [
     `  Subtotal   ${money(order.subtotalCents)}`,
@@ -130,7 +183,7 @@ Order #${orderNum}
 ${itemsText}
 
 ${totalsText}
-${shippingLine}
+${shippingLine}${paymentText}
 ${order.fulfillment === 'SHIP' ? "I'll send another email with tracking as soon as it ships." : "I'll reach out to coordinate pickup."}
 
 — Mel`
@@ -155,6 +208,7 @@ ${order.taxCents > 0 ? `<tr><td style="color:#8a7360">Tax</td><td style="text-al
 <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;font-size:14px">${itemsHtml}</table>
 ${totalsHtml}
 ${shippingHtml}
+${paymentHtml}
 <p style="margin:24px 0 0;font-size:14px">${
       order.fulfillment === 'SHIP'
         ? "I'll send another email with tracking as soon as it ships."

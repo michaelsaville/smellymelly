@@ -10,12 +10,15 @@ interface CheckoutItem {
   quantity: number
 }
 
+type PaymentMethod = 'SQUARE_CARD' | 'SQUARE_CASH_APP' | 'MANUAL'
+
 interface CheckoutBody {
   customer: { name: string; email: string; phone?: string }
   fulfillment: 'SHIP' | 'PICKUP'
   shipping?: { name: string; address: string; city: string; state: string; zip: string }
   items: CheckoutItem[]
-  paymentToken?: string // Square Web Payments SDK nonce
+  paymentToken?: string // Square Web Payments SDK nonce (card or cash-app)
+  paymentMethod?: PaymentMethod
   shippingCentsOverride?: number // from rate calculation
 }
 
@@ -45,10 +48,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Require payment token for shipped orders when Square is configured
+    // Resolve payment method. Defaults to SQUARE_CARD for backward compat
+    // with any old clients that only send paymentToken.
+    const paymentMethod: PaymentMethod =
+      body.paymentMethod ??
+      (body.paymentToken ? 'SQUARE_CARD' : 'MANUAL')
+
     const squareReady = isSquareConfigured()
-    if (body.fulfillment === 'SHIP' && squareReady && !body.paymentToken) {
-      return NextResponse.json({ error: 'Payment is required for shipped orders.' }, { status: 400 })
+    const isSquareTender = paymentMethod === 'SQUARE_CARD' || paymentMethod === 'SQUARE_CASH_APP'
+
+    if (isSquareTender && !squareReady) {
+      return NextResponse.json(
+        { error: 'Card payments are temporarily unavailable. Please pick another option.' },
+        { status: 400 },
+      )
+    }
+    if (isSquareTender && !body.paymentToken) {
+      return NextResponse.json(
+        { error: 'Payment token is required for card / Cash App Pay.' },
+        { status: 400 },
+      )
     }
 
     // --- Load variants & verify stock ---
@@ -128,9 +147,9 @@ export async function POST(req: NextRequest) {
     const taxCents = Math.round(subtotalCents * taxRate)
     const totalCents = subtotalCents + shippingCents + taxCents
 
-    // --- Process Square payment if token provided ---
+    // --- Process Square payment if applicable ---
     let squarePaymentId: string | null = null
-    if (body.paymentToken && squareReady) {
+    if (isSquareTender && body.paymentToken && squareReady) {
       try {
         const square = getSquareClient()
         const paymentResult = await square.payments.create({
@@ -183,6 +202,7 @@ export async function POST(req: NextRequest) {
           shippingCents,
           taxCents,
           totalCents,
+          paymentMethod,
           squarePaymentId,
           paidAt: squarePaymentId ? new Date() : null,
           items: {

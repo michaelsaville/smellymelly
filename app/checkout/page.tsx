@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import StoreLayout from '@/app/components/StoreLayout'
 import SquarePaymentForm from '@/app/components/SquarePaymentForm'
+import SquareCashAppPay from '@/app/components/SquareCashAppPay'
 import { getCart, clearCart, type CartItem } from '@/app/lib/cart'
 
 const TAX_RATE = 0.06
@@ -54,9 +55,16 @@ export default function CheckoutPage() {
   const [selectedRateId, setSelectedRateId] = useState<string | null>(null)
   const [fetchingRates, setFetchingRates] = useState(false)
 
-  // Square payment state
+  // Payment state
+  type PaymentMethod = 'SQUARE_CARD' | 'SQUARE_CASH_APP' | 'MANUAL'
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('SQUARE_CARD')
   const [paymentToken, setPaymentToken] = useState<string | null>(null)
   const [squareConfigured, setSquareConfigured] = useState(false)
+  const [manualHandles, setManualHandles] = useState<{
+    venmoHandle: string
+    cashAppTag: string
+    paymentInstructions: string
+  } | null>(null)
   const tokenResolveRef = useRef<((token: string | null) => void) | null>(null)
 
   const refresh = useCallback(() => setItems(getCart()), [])
@@ -66,7 +74,14 @@ export default function CheckoutPage() {
     refresh()
     fetch('/api/square/config')
       .then((r) => r.json())
-      .then((cfg) => setSquareConfigured(cfg.configured))
+      .then((cfg) => {
+        setSquareConfigured(cfg.configured)
+        if (!cfg.configured) setPaymentMethod('MANUAL')
+      })
+      .catch(() => {})
+    fetch('/api/settings/public')
+      .then((r) => r.json())
+      .then((s) => setManualHandles(s))
       .catch(() => {})
   }, [refresh])
 
@@ -159,7 +174,15 @@ export default function CheckoutPage() {
   const tax = Math.round(subtotal * TAX_RATE)
   const total = subtotal + shipping + tax
 
-  const needsPayment = fulfillment === 'SHIP' && squareConfigured
+  // Needs an up-front Square tokenization step when the buyer picked a
+  // Square tender. MANUAL skips Square entirely.
+  const needsPayment =
+    (paymentMethod === 'SQUARE_CARD' || paymentMethod === 'SQUARE_CASH_APP') &&
+    squareConfigured
+
+  const manualAvailable = Boolean(
+    manualHandles?.venmoHandle || manualHandles?.cashAppTag || manualHandles?.paymentInstructions,
+  )
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -207,6 +230,7 @@ export default function CheckoutPage() {
       if (token) {
         body.paymentToken = token
       }
+      body.paymentMethod = paymentMethod
 
       const res = await fetch('/api/checkout', {
         method: 'POST',
@@ -388,16 +412,114 @@ export default function CheckoutPage() {
             {/* Payment section */}
             <section className="card">
               <h2 className="font-display text-lg font-bold text-brand-dark mb-4">Payment</h2>
-              {fulfillment === 'PICKUP' ? (
-                <div className="rounded-lg bg-surface-warm px-4 py-3 text-sm text-brand-brown">
-                  Pay on pickup. We accept cash and card.
-                </div>
-              ) : (
+
+              <div className="space-y-2 mb-4">
+                {squareConfigured && (
+                  <label className="flex items-start gap-3 p-3 rounded-lg border border-brand-warm/60 cursor-pointer hover:bg-surface-warm">
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value="SQUARE_CARD"
+                      checked={paymentMethod === 'SQUARE_CARD'}
+                      onChange={() => {
+                        setPaymentMethod('SQUARE_CARD')
+                        setPaymentToken(null)
+                      }}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-brand-dark">
+                        Credit or debit card
+                      </div>
+                      <div className="text-xs text-brand-brown/60">
+                        Secure checkout powered by Square.
+                      </div>
+                    </div>
+                  </label>
+                )}
+                {squareConfigured && (
+                  <label className="flex items-start gap-3 p-3 rounded-lg border border-brand-warm/60 cursor-pointer hover:bg-surface-warm">
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value="SQUARE_CASH_APP"
+                      checked={paymentMethod === 'SQUARE_CASH_APP'}
+                      onChange={() => {
+                        setPaymentMethod('SQUARE_CASH_APP')
+                        setPaymentToken(null)
+                      }}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-brand-dark">
+                        Cash App Pay
+                      </div>
+                      <div className="text-xs text-brand-brown/60">
+                        Pay through Cash App — redirect to approve.
+                      </div>
+                    </div>
+                  </label>
+                )}
+                <label className="flex items-start gap-3 p-3 rounded-lg border border-brand-warm/60 cursor-pointer hover:bg-surface-warm">
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    value="MANUAL"
+                    checked={paymentMethod === 'MANUAL'}
+                    onChange={() => {
+                      setPaymentMethod('MANUAL')
+                      setPaymentToken(null)
+                    }}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <div className="text-sm font-medium text-brand-dark">
+                      {fulfillment === 'PICKUP'
+                        ? 'Pay at pickup (cash, Venmo, or Cash App)'
+                        : 'Send payment directly via Venmo or Cash App'}
+                    </div>
+                    <div className="text-xs text-brand-brown/60">
+                      {fulfillment === 'PICKUP'
+                        ? 'You\u2019ll see payment details on the next screen. Bring cash or send via Venmo / Cash App when you pick up.'
+                        : 'You\u2019ll see payment instructions next. Order stays pending until payment is received.'}
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              {paymentMethod === 'SQUARE_CARD' && (
                 <SquarePaymentForm
                   onTokenize={handleSquareTokenize}
                   onError={handleSquareError}
                   disabled={submitting}
                 />
+              )}
+
+              {paymentMethod === 'SQUARE_CASH_APP' && total > 0 && (
+                <SquareCashAppPay
+                  amountCents={total}
+                  referenceId={`checkout-${Date.now()}`}
+                  onTokenize={handleSquareTokenize}
+                  onError={handleSquareError}
+                  disabled={submitting}
+                />
+              )}
+
+              {paymentMethod === 'MANUAL' && (
+                <div className="rounded-lg bg-surface-warm px-4 py-3 text-sm text-brand-brown space-y-2">
+                  <p className="font-medium">How this works:</p>
+                  <ol className="list-decimal pl-5 space-y-1 text-brand-brown/80">
+                    <li>Place your order — it will be marked <em>pending</em>.</li>
+                    <li>You&apos;ll see payment instructions on the next screen and in your confirmation email.</li>
+                    <li>Send payment to the Venmo / Cash App handle listed with your order number in the memo.</li>
+                    <li>Mel will mark your order paid and ship / prepare it as usual.</li>
+                  </ol>
+                  {!manualAvailable && (
+                    <p className="text-xs text-amber-700 mt-2">
+                      Note: payment handles aren&apos;t set up yet. Mel will email you directly with instructions.
+                    </p>
+                  )}
+                </div>
               )}
             </section>
 

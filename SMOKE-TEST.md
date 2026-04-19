@@ -56,7 +56,13 @@ Use a **personal email** you can check for incoming mail during this run.
 - [ ] Update quantity +/- works; removing an item works
 - [ ] Refreshing the page keeps the cart (localStorage)
 
-### 2.2 Checkout — shipping
+### 2.2 Payment method selector
+- [ ] Three options appear at checkout: Credit/debit card, Cash App Pay,
+      and "Send payment directly via Venmo or Cash App"
+- [ ] If Square isn't configured yet, the card and Cash App Pay options
+      hide automatically and only the manual option is shown
+
+### 2.3 Checkout — shipping
 - [ ] Pick "Ship" fulfillment
 - [ ] Type a real address — shipping rates populate within a few seconds
       (EasyPost live; falls back to flat $5.99 if EasyPost is down)
@@ -67,13 +73,31 @@ Use a **personal email** you can check for incoming mail during this run.
 - [ ] Email arrives within ~1 minute with correct order # and items
 - [ ] Open **Square dashboard** → confirm the payment appears
 
-### 2.3 Checkout — pickup
+### 2.3b Checkout — pickup
 - [ ] Start a new checkout, pick "Local pickup"
 - [ ] Shipping section disappears
 - [ ] Complete checkout (Square still charges full amount)
 - [ ] Order confirmation email arrives
 
-### 2.4 Edge cases
+### 2.4 Manual tender (Venmo / Cash App direct)
+- [ ] On `/admin/settings`, set your Venmo handle and Cash App cashtag,
+      optionally add extra payment instructions, save
+- [ ] Start a new checkout, pick "Send payment directly via Venmo or
+      Cash App", complete the order
+- [ ] Confirmation page shows "How to pay" callout with your handles,
+      order total, and order number
+- [ ] Confirmation email includes the same payment instructions
+- [ ] On `/admin/orders/[id]` the order shows "Awaiting manual payment"
+- [ ] Click "Mark as Paid" with a note ("Venmo 4/19") — status flips
+      to PAID, note is saved, normal workflow buttons appear
+
+### 2.5 Cash App Pay via Square (after creds are live)
+- [ ] Enable Cash App Pay in your Square Dashboard
+- [ ] On checkout pick "Cash App Pay", complete the redirect flow on
+      your phone, verify the charge lands in Square
+- [ ] Order records paymentMethod = SQUARE_CASH_APP with Square payment ID
+
+### 2.6 Edge cases
 - [ ] Try to check out with **0 items** — should be blocked
 - [ ] Try an incomplete shipping address on a ship order — blocked with
       a clear error

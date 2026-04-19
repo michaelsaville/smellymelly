@@ -25,6 +25,8 @@ const VALID_STATUSES: SM_OrderStatus[] = [
 interface PatchBody {
   status?: SM_OrderStatus
   trackingNumber?: string | null
+  markPaidAt?: boolean
+  manualPaymentNote?: string | null
 }
 
 export async function PATCH(
@@ -52,11 +54,16 @@ export async function PATCH(
     trackingNumber?: string | null
     shippedAt?: Date | null
     cancelledAt?: Date | null
+    paidAt?: Date | null
+    manualPaymentNote?: string | null
   } = {}
 
   if (body.status) data.status = body.status
   if (body.trackingNumber !== undefined) {
     data.trackingNumber = body.trackingNumber?.trim() || null
+  }
+  if (body.manualPaymentNote !== undefined) {
+    data.manualPaymentNote = body.manualPaymentNote?.trim() || null
   }
 
   // Side effects for specific status transitions
@@ -65,6 +72,11 @@ export async function PATCH(
   }
   if (body.status === 'CANCELLED' && !existing.cancelledAt) {
     data.cancelledAt = new Date()
+  }
+  // Mark-paid flag: set paidAt if the flag is true and it isn't already set.
+  // Usually paired with status → PAID on manual tenders.
+  if (body.markPaidAt && !existing.paidAt) {
+    data.paidAt = new Date()
   }
 
   const updated = await prisma.sM_Order.update({

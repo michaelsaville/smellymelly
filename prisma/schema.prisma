@@ -121,6 +121,16 @@ enum SM_FulfillmentType {
   @@schema("smellymelly")
 }
 
+enum SM_PaymentMethod {
+  SQUARE_CARD
+  SQUARE_CASH_APP
+  // Manual = buyer sends money directly via Venmo / Cash App / etc.
+  // Order stays PENDING until admin marks it PAID.
+  MANUAL
+
+  @@schema("smellymelly")
+}
+
 model SM_Order {
   id          String             @id @default(cuid())
   orderNumber Int                @unique @default(autoincrement())
@@ -149,7 +159,11 @@ model SM_Order {
   taxCents      Int @default(0)
   totalCents    Int
 
-  // Square payment
+  // Payment tracking
+  paymentMethod   SM_PaymentMethod @default(SQUARE_CARD)
+  // For MANUAL tender — filled in by admin when marking the order paid.
+  // Free-form so "Venmo 4/18", "Cash App @melissaj", "Check #301" all work.
+  manualPaymentNote String?
   squarePaymentId String?
   squareOrderId   String?
 
@@ -370,6 +384,12 @@ model SM_Settings {
   // Admins with a valid sm_admin cookie bypass so they can still preview.
   maintenanceMode    Boolean @default(false)
   maintenanceMessage String  @default("")
+
+  // Manual payment handles — shown on the order confirmation screen + email
+  // when the buyer picks "Pay directly via Venmo / Cash App" at checkout.
+  venmoHandle         String @default("")
+  cashAppTag          String @default("")
+  paymentInstructions String @default("")
 
   @@map("sm_settings")
   @@schema("smellymelly")

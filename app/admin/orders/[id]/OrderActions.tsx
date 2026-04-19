@@ -21,6 +21,8 @@ interface Props {
   trackingNumber: string | null
   shippingLabel: string | null
   canBuyLabel: boolean
+  paymentMethod: 'SQUARE_CARD' | 'SQUARE_CASH_APP' | 'MANUAL'
+  paidAt: string | null
 }
 
 // Which status "forward" buttons to show given the current state.
@@ -52,11 +54,14 @@ export default function OrderActions({
   fulfillment,
   trackingNumber,
   canBuyLabel,
+  paymentMethod,
+  paidAt,
 }: Props) {
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [manualTracking, setManualTracking] = useState(trackingNumber ?? '')
+  const [manualPaymentNote, setManualPaymentNote] = useState('')
 
   async function patch(body: Record<string, unknown>, busyKey: string) {
     setBusy(busyKey)
@@ -105,6 +110,15 @@ export default function OrderActions({
     await patch({ status: 'SHIPPED', trackingNumber: tracking }, 'manual-ship')
   }
 
+  async function markAsPaid() {
+    const note = manualPaymentNote.trim()
+    await patch(
+      { status: 'PAID', markPaidAt: true, manualPaymentNote: note || null },
+      'mark-paid',
+    )
+    setManualPaymentNote('')
+  }
+
   const nexts = nextSteps(status, fulfillment)
   const terminal = ['DELIVERED', 'PICKED_UP', 'CANCELLED', 'REFUNDED'].includes(status)
 
@@ -126,6 +140,40 @@ export default function OrderActions({
         </p>
       ) : (
         <div className="space-y-4">
+          {/* Mark as paid — manual tender orders that haven't been paid yet */}
+          {paymentMethod === 'MANUAL' && !paidAt && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 space-y-3">
+              <h3 className="font-medium text-sm text-amber-900">
+                Awaiting manual payment
+              </h3>
+              <p className="text-xs text-amber-800">
+                Once the buyer&apos;s Venmo / Cash App / cash payment shows up,
+                mark this order paid. The status will flip to PAID and the
+                paid-at timestamp gets recorded.
+              </p>
+              <div>
+                <label className="block text-xs text-amber-800 mb-1">
+                  Note (optional — e.g. &quot;Venmo 4/19&quot;)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={manualPaymentNote}
+                    onChange={(e) => setManualPaymentNote(e.target.value)}
+                    className="input flex-1"
+                  />
+                  <button
+                    onClick={markAsPaid}
+                    disabled={busy !== null}
+                    className="btn-primary disabled:opacity-60"
+                  >
+                    {busy === 'mark-paid' ? 'Saving…' : 'Mark as Paid'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Advance status buttons */}
           {nexts.length > 0 && (
             <div className="flex flex-wrap gap-2">

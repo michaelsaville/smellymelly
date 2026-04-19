@@ -156,6 +156,8 @@ export default async function OrderDetailPage({
             trackingNumber={order.trackingNumber}
             shippingLabel={order.shippingLabel}
             canBuyLabel={canBuyLabel}
+            paymentMethod={order.paymentMethod}
+            paidAt={order.paidAt?.toISOString() ?? null}
           />
         </div>
 
@@ -240,20 +242,35 @@ export default async function OrderDetailPage({
               Payment
             </h2>
             <div className="text-sm space-y-1">
-              {order.squarePaymentId ? (
-                <>
-                  <div className="text-brand-brown/70">Square</div>
+              <div className="text-xs text-brand-brown/60">Method</div>
+              <div className="font-medium text-brand-dark">
+                {order.paymentMethod === 'SQUARE_CARD' && 'Credit / debit card (Square)'}
+                {order.paymentMethod === 'SQUARE_CASH_APP' && 'Cash App Pay (Square)'}
+                {order.paymentMethod === 'MANUAL' && 'Direct — Venmo / Cash App'}
+              </div>
+              {order.squarePaymentId && (
+                <div className="mt-3 pt-3 border-t border-brand-warm/40">
+                  <div className="text-xs text-brand-brown/60">Square payment ID</div>
                   <div className="font-mono text-xs text-brand-brown/60 break-all">
                     {order.squarePaymentId}
                   </div>
-                  {order.paidAt && (
-                    <div className="text-xs text-brand-brown/50 mt-1">
-                      Paid {order.paidAt.toLocaleString()}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <p className="text-brand-brown/60">Not charged through Square.</p>
+                </div>
+              )}
+              {order.paidAt && (
+                <div className="text-xs text-brand-brown/50 mt-2">
+                  Paid {order.paidAt.toLocaleString()}
+                </div>
+              )}
+              {order.paymentMethod === 'MANUAL' && order.manualPaymentNote && (
+                <div className="mt-3 pt-3 border-t border-brand-warm/40">
+                  <div className="text-xs text-brand-brown/60">Note</div>
+                  <div className="text-brand-brown/80">{order.manualPaymentNote}</div>
+                </div>
+              )}
+              {order.paymentMethod === 'MANUAL' && !order.paidAt && (
+                <p className="mt-3 pt-3 border-t border-brand-warm/40 text-xs text-amber-700">
+                  Waiting on manual payment. Use the &quot;Mark as paid&quot; action in the Actions panel once money has landed.
+                </p>
               )}
             </div>
           </div>
