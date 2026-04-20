@@ -403,7 +403,7 @@ export default function CheckoutPage() {
                 <h2 className="font-display text-lg font-bold text-brand-dark mb-4">Pickup Information</h2>
                 <div className="rounded-lg bg-surface-warm px-4 py-3 text-sm text-brand-brown">
                   <p className="font-medium">Pick up at:</p>
-                  <p className="mt-1">Smelly Melly Workshop<br />West Virginia</p>
+                  <p className="mt-1">Smelly Melly Workshop<br />Cumberland, MD</p>
                   <p className="mt-2 text-brand-brown/60">We will contact you when your order is ready for pickup.</p>
                 </div>
               </section>

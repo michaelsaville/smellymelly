@@ -132,7 +132,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
               Smelly Melly
             </div>
             <div className="mt-1 text-sm text-brand-brown/50">
-              Handmade in West Virginia
+              Handmade in Cumberland, MD
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:items-center">

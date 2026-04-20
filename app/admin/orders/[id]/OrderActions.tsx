@@ -17,7 +17,7 @@ type Status =
 interface Props {
   orderId: string
   status: Status
-  fulfillment: 'SHIP' | 'PICKUP'
+  fulfillment: 'SHIP' | 'PICKUP' | 'HOST_DELIVERY'
   trackingNumber: string | null
   shippingLabel: string | null
   canBuyLabel: boolean
@@ -26,9 +26,10 @@ interface Props {
 }
 
 // Which status "forward" buttons to show given the current state.
-function nextSteps(status: Status, fulfillment: 'SHIP' | 'PICKUP'): Status[] {
+function nextSteps(status: Status, fulfillment: 'SHIP' | 'PICKUP' | 'HOST_DELIVERY'): Status[] {
   if (status === 'PAID') return ['PROCESSING']
   if (status === 'PROCESSING') {
+    // HOST_DELIVERY orders ride alongside regular pickup — Mel preps, host picks up
     return fulfillment === 'SHIP' ? ['SHIPPED'] : ['READY_FOR_PICKUP']
   }
   if (status === 'SHIPPED') return ['DELIVERED']

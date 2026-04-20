@@ -65,7 +65,8 @@ model SM_ProductVariant {
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
-  orderItems SM_OrderItem[]
+  orderItems       SM_OrderItem[]
+  campaignVariants SM_CampaignVariant[]
 
   @@map("sm_product_variants")
   @@schema("smellymelly")
@@ -117,6 +118,9 @@ enum SM_OrderStatus {
 enum SM_FulfillmentType {
   SHIP
   PICKUP
+  /// Campaign fulfillment — Mel hands the consolidated bundle to the
+  /// campaign host, who distributes to buyers at the party/event.
+  HOST_DELIVERY
 
   @@schema("smellymelly")
 }
@@ -178,6 +182,11 @@ model SM_Order {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  // Campaign / fundraiser — present when the order came through a
+  // /party/[slug] page. Null for regular storefront orders.
+  campaignId String?
+  campaign   SM_Campaign? @relation(fields: [campaignId], references: [id])
+
   items SM_OrderItem[]
 
   @@map("sm_orders")
@@ -197,6 +206,75 @@ model SM_OrderItem {
   totalCents  Int
 
   @@map("sm_order_items")
+  @@schema("smellymelly")
+}
+
+// ─── FUNDRAISER CAMPAIGNS ─────────────────────────────────────────────────
+
+enum SM_CampaignStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+
+  @@schema("smellymelly")
+}
+
+/// A person hosting a fundraiser/party. Reusable across campaigns.
+model SM_Host {
+  id          String   @id @default(cuid())
+  name        String
+  email       String?
+  phone       String?
+  /// Free-form payout notes (Venmo @handle, mailing address, etc.)
+  payoutNotes String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  campaigns SM_Campaign[]
+
+  @@map("sm_hosts")
+  @@schema("smellymelly")
+}
+
+/// A fundraiser campaign — single-price variants curated for one event.
+/// Lives at /party/[slug]; host views status at /host/[hostToken].
+model SM_Campaign {
+  id          String            @id @default(cuid())
+  slug        String            @unique
+  name        String
+  description String?
+  hostId      String
+  host        SM_Host           @relation(fields: [hostId], references: [id])
+  /// Opaque token used in /host/[token] magic-link URLs.
+  hostToken   String            @unique
+  /// What the buyer pays per item, regardless of the variant's retail price.
+  customerPriceCents Int
+  /// What Mel keeps per item sold. Host's cut = customerPriceCents − mellyCutCents.
+  mellyCutCents      Int
+  status      SM_CampaignStatus @default(DRAFT)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  variants SM_CampaignVariant[]
+  orders   SM_Order[]
+
+  @@map("sm_campaigns")
+  @@schema("smellymelly")
+}
+
+/// Which product variants are sellable in a given campaign.
+model SM_CampaignVariant {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   SM_Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  variantId  String
+  variant    SM_ProductVariant @relation(fields: [variantId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@unique([campaignId, variantId])
+  @@map("sm_campaign_variants")
   @@schema("smellymelly")
 }
 

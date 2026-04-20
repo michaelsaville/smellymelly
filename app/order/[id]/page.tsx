@@ -165,7 +165,7 @@ export default async function OrderConfirmationPage({
           ) : (
             <div>
               <p className="text-sm text-brand-brown">
-                Smelly Melly Workshop, West Virginia
+                Smelly Melly Workshop, Cumberland, MD
               </p>
               <p className="mt-2 text-sm text-brand-brown/60">
                 We will contact you at {order.customerEmail} when your order is ready for pickup.

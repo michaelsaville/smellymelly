@@ -96,7 +96,7 @@ function wrap(title: string, bodyHtml: string): string {
 <h1 style="margin:0 0 16px;font-size:24px;color:#C67D4A">${escapeHtml(title)}</h1>
 ${bodyHtml}
 <hr style="border:none;border-top:1px solid #eee;margin:32px 0">
-<p style="margin:0;font-size:12px;color:#8a7360">Smelly Melly — handmade bath &amp; body from West Virginia<br><a href="${STORE_URL}" style="color:#C67D4A">${STORE_URL.replace(/^https?:\/\//, '')}</a></p>
+<p style="margin:0;font-size:12px;color:#8a7360">Smelly Melly — handmade bath &amp; body from Cumberland, Maryland<br><a href="${STORE_URL}" style="color:#C67D4A">${STORE_URL.replace(/^https?:\/\//, '')}</a></p>
 </td></tr></table></td></tr></table></body></html>`
 }
 

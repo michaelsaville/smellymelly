@@ -13,13 +13,13 @@ export function isEasyPostConfigured(): boolean {
   return !!process.env.EASYPOST_API_KEY
 }
 
-// Smelly Melly's ship-from address (WV workshop)
+// Smelly Melly's ship-from address (Cumberland, MD workshop)
 export function getFromAddress() {
   return {
     company: 'Smelly Melly',
     street1: process.env.SHIP_FROM_STREET || '',
-    city: process.env.SHIP_FROM_CITY || '',
-    state: process.env.SHIP_FROM_STATE || 'WV',
+    city: process.env.SHIP_FROM_CITY || 'Cumberland',
+    state: process.env.SHIP_FROM_STATE || 'MD',
     zip: process.env.SHIP_FROM_ZIP || '',
     country: 'US',
     phone: process.env.SHIP_FROM_PHONE || '',

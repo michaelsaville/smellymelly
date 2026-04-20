@@ -9,10 +9,10 @@ function formatPrice(cents: number) {
 }
 
 const categoryEmojis: Record<string, string> = {
-  candles: '🕯️',
-  soaps: '🧼',
-  'bath-bombs': '🛁',
-  'lip-balm': '💋',
+  candles: '🛋️',
+  'bath-body': '🛁',
+  'lip-care': '👄',
+  'beard-oil': '🧴',
   'beard-balm': '🧔',
 }
 
@@ -50,8 +50,8 @@ export default async function HomePage() {
             <span className="text-brand-terra">scented with joy</span>
           </h1>
           <p className="mt-6 text-lg text-brand-brown/70 max-w-xl mx-auto">
-            Small-batch candles, soaps, bath bombs, and body care products —
-            made by hand in West Virginia.
+            Small-batch home fragrance, soaps, bath bombs, and body care
+            products — made by hand in Cumberland, Maryland.
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <Link href="/shop" className="btn-primary text-base px-8 py-3">

@@ -152,11 +152,11 @@ export default function ContactPage() {
                 </div>
                 <div>
                   <p className="font-medium text-brand-dark">Phone</p>
-                  <p className="text-brand-brown/70">(304) 555-0123</p>
+                  <p className="text-brand-brown/70">(301) 555-0123</p>
                 </div>
                 <div>
                   <p className="font-medium text-brand-dark">Location</p>
-                  <p className="text-brand-brown/70">West Virginia</p>
+                  <p className="text-brand-brown/70">Cumberland, Maryland</p>
                 </div>
               </div>
             </div>

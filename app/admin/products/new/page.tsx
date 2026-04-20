@@ -24,10 +24,10 @@ export default async function NewProductPage() {
   if (categories.length === 0) {
     const defaults = [
       { name: 'Candles', slug: 'candles', sortOrder: 1 },
-      { name: 'Soaps', slug: 'soaps', sortOrder: 2 },
       { name: 'Bath & Body', slug: 'bath-body', sortOrder: 3 },
       { name: 'Lip Care', slug: 'lip-care', sortOrder: 4 },
-      { name: 'Beard Care', slug: 'beard-care', sortOrder: 5 },
+      { name: 'Beard Oil', slug: 'beard-oil', sortOrder: 5 },
+      { name: 'Beard Balm', slug: 'beard-balm', sortOrder: 6 },
     ]
     for (const cat of defaults) {
       await prisma.sM_Category.create({ data: cat })

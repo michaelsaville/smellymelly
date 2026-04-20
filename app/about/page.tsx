@@ -4,7 +4,7 @@ import StoreLayout from '@/app/components/StoreLayout'
 export const metadata: Metadata = {
   title: 'About',
   description:
-    'Meet Mel — the maker behind Smelly Melly. Small-batch bath and body products handcrafted in the mountains of West Virginia.',
+    'Meet Mel — the maker behind Smelly Melly. Small-batch bath and body products handcrafted in Cumberland, Maryland.',
 }
 
 export default function AboutPage() {
@@ -16,7 +16,7 @@ export default function AboutPage() {
             About Smelly Melly
           </h1>
           <p className="mt-2 text-center text-brand-brown/60">
-            Handmade with love in the mountains of West Virginia
+            Handmade with love in Cumberland, Maryland
           </p>
         </div>
       </div>
@@ -30,7 +30,7 @@ export default function AboutPage() {
         </p>
 
         <p>
-          Growing up in West Virginia, I was always surrounded by the scents
+          Growing up in Cumberland, Maryland, I was always surrounded by the scents
           of wildflowers, fresh rain, and wood smoke. Those memories inspire
           every fragrance I create. Whether it&apos;s a warm vanilla candle
           for a cozy evening or a zesty citrus soap to start your morning,

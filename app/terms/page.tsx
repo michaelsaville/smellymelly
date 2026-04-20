@@ -33,7 +33,7 @@ export default function TermsPage() {
         </h2>
         <p>
           Smelly Melly is a small, handmade bath &amp; body business based in
-          West Virginia. Every product is crafted in small batches by Mel.
+          Cumberland, Maryland. Every product is crafted in small batches by Mel.
           Because of that, items may vary slightly in appearance, color, and
           scent from batch to batch — it&apos;s part of the handmade charm.
         </p>
