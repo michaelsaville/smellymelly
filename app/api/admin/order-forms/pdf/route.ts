@@ -77,13 +77,19 @@ export async function GET(_req: NextRequest) {
     })
   }
 
-  const paymentBits: string[] = []
-  if (settings?.venmoHandle) paymentBits.push(`Venmo ${settings.venmoHandle}`)
-  if (settings?.cashAppTag) paymentBits.push(`Cash App ${settings.cashAppTag}`)
-  paymentBits.push('or cash on delivery')
-  const paymentNote =
-    settings?.paymentInstructions?.trim() ||
-    `Pay by ${paymentBits.join(', ')}. We'll confirm your total when we deliver.`
+  // Build payment line. Only mention "Pay by …" when at least one handle is
+  // set — otherwise you get the reader-hostile "Pay by  or cash on delivery".
+  const handles: string[] = []
+  if (settings?.venmoHandle) handles.push(`Venmo ${settings.venmoHandle}`)
+  if (settings?.cashAppTag) handles.push(`Cash App ${settings.cashAppTag}`)
+  let paymentNote: string
+  if (settings?.paymentInstructions?.trim()) {
+    paymentNote = settings.paymentInstructions.trim()
+  } else if (handles.length > 0) {
+    paymentNote = `Pay by ${[...handles, 'or cash on delivery'].join(', ')}. We'll confirm your total when we deliver.`
+  } else {
+    paymentNote = "Pay with cash or check on delivery. We'll confirm your total when we deliver."
+  }
 
   const data: OrderFormData = {
     businessName: settings?.businessName ?? 'Smelly Melly',

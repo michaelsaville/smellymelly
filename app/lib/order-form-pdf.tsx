@@ -355,9 +355,9 @@ export function OrderFormDocument({ data }: { data: OrderFormData }) {
         <View style={styles.header}>
           <Text style={styles.brand}>{data.businessName}</Text>
           <Text style={styles.tagline}>
-            Handcrafted bath & body · {data.businessPhone ?? ''}
-            {data.businessPhone && data.businessEmail ? ' · ' : ''}
-            {data.businessEmail ?? ''}
+            {['Handcrafted bath & body', data.businessPhone, data.businessEmail]
+              .filter((s): s is string => !!s && s.trim().length > 0)
+              .join(' · ')}
           </Text>
         </View>
 
@@ -395,7 +395,7 @@ export function OrderFormDocument({ data }: { data: OrderFormData }) {
         })}
 
         <Text style={styles.footer}>
-          Flip over to place your order →
+          Flip over to place your order
         </Text>
         <Text style={styles.pageNumber} render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`} fixed />
       </Page>

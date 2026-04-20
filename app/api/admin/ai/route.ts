@@ -632,7 +632,7 @@ ${product.ingredients ? `Key ingredients: ${product.ingredients}` : ''}
 The business is "Smelly Melly" — a small handmade bath & body products business. All products are handmade with love. Do NOT include the product name or "Smelly Melly" in the description — those are already shown on the page. Just describe the product itself.`
 
       const descResponse = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 256,
         messages: [{ role: 'user', content: descPrompt }],
       })
@@ -992,7 +992,7 @@ export async function POST(req: NextRequest) {
 
     for (let i = 0; i < 10; i++) {
       const response = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 1024,
         system: SYSTEM_PROMPT,
         tools,
