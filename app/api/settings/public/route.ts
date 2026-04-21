@@ -10,11 +10,13 @@ export async function GET() {
       venmoHandle: true,
       cashAppTag: true,
       paymentInstructions: true,
+      logoUrl: true,
     },
   })
   return NextResponse.json({
     venmoHandle: settings?.venmoHandle ?? '',
     cashAppTag: settings?.cashAppTag ?? '',
     paymentInstructions: settings?.paymentInstructions ?? '',
+    logoUrl: settings?.logoUrl ?? null,
   })
 }

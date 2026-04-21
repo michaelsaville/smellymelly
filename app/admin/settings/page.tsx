@@ -21,6 +21,7 @@ export default async function SettingsPage() {
       </p>
 
       <SettingsForm
+        logoUrl={settings?.logoUrl ?? null}
         venmoHandle={settings?.venmoHandle ?? ''}
         cashAppTag={settings?.cashAppTag ?? ''}
         paymentInstructions={settings?.paymentInstructions ?? ''}

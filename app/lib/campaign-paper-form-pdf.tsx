@@ -3,6 +3,7 @@ import {
   Page,
   Text,
   View,
+  Image,
   StyleSheet,
 } from '@react-pdf/renderer'
 
@@ -28,6 +29,9 @@ export interface CampaignPaperData {
   partyUrl: string | null
   /** How many buyer slots on this sheet. 15 is the default. */
   buyerSlots: number
+  /** Rendered in the page header when present. */
+  logoBuffer: Buffer | null
+  logoFormat: 'png' | 'jpg' | null
 }
 
 const COLORS = {
@@ -298,13 +302,21 @@ export function CampaignPaperFormDocument({ data }: { data: CampaignPaperData })
   return (
     <Document>
       <Page size="LETTER" style={styles.page}>
-        <View style={styles.header}>
-          <Text style={styles.brand}>
-            {data.businessName} · {data.campaignName}
-          </Text>
-          <Text style={styles.tagline}>
-            Host: {data.hostName} · Printed {todayStr}
-          </Text>
+        <View style={[styles.header, { flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
+          {data.logoBuffer && data.logoFormat && (
+            <Image
+              src={{ data: data.logoBuffer, format: data.logoFormat }}
+              style={{ width: 40, height: 40, objectFit: 'contain' }}
+            />
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.brand}>
+              {data.businessName} · {data.campaignName}
+            </Text>
+            <Text style={styles.tagline}>
+              Host: {data.hostName} · Printed {todayStr}
+            </Text>
+          </View>
         </View>
 
         <View style={styles.priceBadge}>

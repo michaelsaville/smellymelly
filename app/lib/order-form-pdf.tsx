@@ -31,6 +31,10 @@ export interface OrderFormData {
   businessPhone: string | null
   businessEmail: string | null
   paymentNote: string // e.g. "Pay by Venmo @melissaj, Cash App $MellyJ, or cash on delivery"
+  /** Rendered above the wordmark on each page header when present. */
+  logoBuffer: Buffer | null
+  /** Format hint for react-pdf — must match logoBuffer. */
+  logoFormat: 'png' | 'jpg' | null
   products: OrderFormProduct[]
 }
 
@@ -353,6 +357,12 @@ export function OrderFormDocument({ data }: { data: OrderFormData }) {
       {/* FRONT — catalog */}
       <Page size="LETTER" style={styles.page}>
         <View style={styles.header}>
+          {data.logoBuffer && data.logoFormat && (
+            <Image
+              src={{ data: data.logoBuffer, format: data.logoFormat }}
+              style={{ width: 60, height: 60, marginBottom: 4, objectFit: 'contain' }}
+            />
+          )}
           <Text style={styles.brand}>{data.businessName}</Text>
           <Text style={styles.tagline}>
             {['Handcrafted bath & body', data.businessPhone, data.businessEmail]
@@ -403,6 +413,12 @@ export function OrderFormDocument({ data }: { data: OrderFormData }) {
       {/* BACK — order form */}
       <Page size="LETTER" style={styles.page}>
         <View style={styles.header}>
+          {data.logoBuffer && data.logoFormat && (
+            <Image
+              src={{ data: data.logoBuffer, format: data.logoFormat }}
+              style={{ width: 44, height: 44, marginBottom: 2, objectFit: 'contain' }}
+            />
+          )}
           <Text style={styles.brand}>{data.businessName} · Order Form</Text>
           <Text style={styles.tagline}>Printed {todayStr}</Text>
         </View>

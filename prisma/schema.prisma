@@ -471,6 +471,10 @@ model SM_Settings {
   zip           String?
   taxRate       Float   @default(0.06)
 
+  /// Path under /api/uploads/logo/... when Mel has uploaded a brand mark.
+  /// Null means the wordmark "Smelly Melly" renders everywhere instead.
+  logoUrl String?
+
   // Maintenance / "under construction" mode. When true, public visitors see
   // the /maintenance page and public APIs (checkout, contact, shipping) 503.
   // Admins with a valid sm_admin cookie bypass so they can still preview.

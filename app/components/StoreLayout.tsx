@@ -42,17 +42,78 @@ const navLinks = [
   { href: '/contact', label: 'Contact' },
 ]
 
+/**
+ * Fetches the site logo from /api/settings/public once on mount. A small
+ * amount of FOUT is acceptable — logo is under 5MB on upload and normally
+ * much smaller — but we cache the value in sessionStorage so same-session
+ * navigations don't re-fetch.
+ */
+function useLogoUrl(): string | null {
+  const [logoUrl, setLogoUrl] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    try {
+      const cached = sessionStorage.getItem('sm_logo_url')
+      return cached === '__none__' ? null : cached
+    } catch {
+      return null
+    }
+  })
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/settings/public')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json: { logoUrl?: string | null } | null) => {
+        if (cancelled) return
+        const next = json?.logoUrl ?? null
+        setLogoUrl(next)
+        try {
+          sessionStorage.setItem('sm_logo_url', next ?? '__none__')
+        } catch {
+          // sessionStorage full or blocked — harmless, we just re-fetch next time
+        }
+      })
+      .catch(() => {
+        // Keep any cached value / null on network blip
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  return logoUrl
+}
+
+function BrandMark({ logoUrl }: { logoUrl: string | null }) {
+  if (logoUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={logoUrl}
+        alt="Smelly Melly"
+        className="h-10 w-auto sm:h-12 object-contain"
+      />
+    )
+  }
+  return (
+    <span className="font-display text-2xl font-bold text-brand-brown">
+      Smelly Melly
+    </span>
+  )
+}
+
 export default function StoreLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const logoUrl = useLogoUrl()
 
   return (
     <div className="min-h-screen flex flex-col">
       {/* Navigation */}
       <nav className="border-b border-brand-warm/40 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="font-display text-2xl font-bold text-brand-brown">
-            Smelly Melly
+          <Link href="/" className="flex items-center">
+            <BrandMark logoUrl={logoUrl} />
           </Link>
 
           {/* Mobile hamburger */}
@@ -128,8 +189,18 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
       <footer className="border-t border-brand-warm/40 bg-brand-cream py-12 px-6">
         <div className="mx-auto max-w-6xl grid gap-6 sm:grid-cols-3 sm:items-start">
           <div>
-            <div className="font-display text-xl font-bold text-brand-brown">
-              Smelly Melly
+            <div className="flex items-center gap-3">
+              {logoUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={logoUrl}
+                  alt="Smelly Melly"
+                  className="h-10 w-auto object-contain"
+                />
+              )}
+              <div className="font-display text-xl font-bold text-brand-brown">
+                Smelly Melly
+              </div>
             </div>
             <div className="mt-1 text-sm text-brand-brown/50">
               Handmade in Cumberland, MD

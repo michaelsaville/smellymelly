@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState, type ChangeEvent } from 'react'
 import { useRouter } from 'next/navigation'
 
 interface Props {
+  logoUrl: string | null
   venmoHandle: string
   cashAppTag: string
   paymentInstructions: string
@@ -11,18 +12,64 @@ interface Props {
 }
 
 export default function SettingsForm({
+  logoUrl: initialLogoUrl,
   venmoHandle: initialVenmo,
   cashAppTag: initialCashApp,
   paymentInstructions: initialInstructions,
   taxRate: initialTaxRate,
 }: Props) {
   const router = useRouter()
+  const [logoUrl, setLogoUrl] = useState(initialLogoUrl)
+  const [logoBusy, setLogoBusy] = useState(false)
+  const [logoError, setLogoError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const [venmoHandle, setVenmoHandle] = useState(initialVenmo)
   const [cashAppTag, setCashAppTag] = useState(initialCashApp)
   const [paymentInstructions, setPaymentInstructions] = useState(initialInstructions)
   const [taxRatePct, setTaxRatePct] = useState(String((initialTaxRate * 100).toFixed(2)))
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
+
+  async function uploadLogo(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setLogoBusy(true)
+    setLogoError(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/admin/logo', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Upload failed')
+      setLogoUrl(data.logoUrl)
+      router.refresh()
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setLogoBusy(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  async function removeLogo() {
+    if (!confirm('Remove the current logo? The site will go back to the text wordmark.')) {
+      return
+    }
+    setLogoBusy(true)
+    setLogoError(null)
+    try {
+      const res = await fetch('/api/admin/logo', { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Remove failed')
+      setLogoUrl(null)
+      router.refresh()
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : 'Remove failed')
+    } finally {
+      setLogoBusy(false)
+    }
+  }
 
   async function save() {
     const pct = Number(taxRatePct)
@@ -61,6 +108,65 @@ export default function SettingsForm({
           {error}
         </div>
       )}
+
+      <div className="card">
+        <h2 className="font-display text-lg font-semibold text-brand-dark mb-1">
+          Site logo
+        </h2>
+        <p className="text-xs text-brand-brown/60 mb-4">
+          Shown on the public site header and footer, the admin nav, order
+          emails, and printed forms. Leave empty to use the &ldquo;Smelly
+          Melly&rdquo; wordmark instead. PNG, JPEG, WebP, or SVG up to 5 MB.
+        </p>
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="h-20 w-20 flex items-center justify-center rounded-lg border border-brand-warm/50 bg-brand-cream/40 overflow-hidden">
+            {logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logoUrl}
+                alt="Current logo"
+                className="h-full w-full object-contain"
+              />
+            ) : (
+              <span className="text-xs text-brand-brown/50 text-center px-1">
+                wordmark
+              </span>
+            )}
+          </div>
+          <div className="flex-1 min-w-[200px] space-y-2">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={logoBusy}
+                className="btn-secondary text-sm"
+              >
+                {logoBusy ? 'Working…' : logoUrl ? 'Replace logo' : 'Upload logo'}
+              </button>
+              {logoUrl && (
+                <button
+                  type="button"
+                  onClick={removeLogo}
+                  disabled={logoBusy}
+                  className="text-sm text-red-700 hover:text-red-900 disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+              onChange={uploadLogo}
+              className="hidden"
+            />
+            {logoError && (
+              <p className="text-xs text-red-700">{logoError}</p>
+            )}
+          </div>
+        </div>
+      </div>
 
       <div className="card">
         <h2 className="font-display text-lg font-semibold text-brand-dark mb-1">

@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { prisma } from '@/app/lib/prisma'
 
 const NAV_ITEMS = [
   { href: '/admin', label: 'Dashboard' },
@@ -16,11 +17,22 @@ const NAV_ITEMS = [
   { href: '/admin/settings', label: 'Settings' },
 ] as const
 
-export default function AdminLayout({
+export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  let logoUrl: string | null = null
+  try {
+    const settings = await prisma.sM_Settings.findUnique({
+      where: { id: 'singleton' },
+      select: { logoUrl: true },
+    })
+    logoUrl = settings?.logoUrl ?? null
+  } catch {
+    // Fallback to wordmark below; never block the admin from loading.
+  }
+
   return (
     <div className="min-h-screen bg-surface-muted">
       <nav className="border-b border-brand-warm/40 bg-white px-6 py-3">
@@ -28,8 +40,16 @@ export default function AdminLayout({
           <div className="flex items-center gap-6">
             <Link
               href="/admin"
-              className="font-display text-xl font-bold text-brand-brown"
+              className="flex items-center gap-2 font-display text-xl font-bold text-brand-brown"
             >
+              {logoUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={logoUrl}
+                  alt=""
+                  className="h-8 w-auto object-contain"
+                />
+              )}
               SM Admin
             </Link>
             <div className="flex items-center gap-1">

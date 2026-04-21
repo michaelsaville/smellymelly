@@ -6,6 +6,7 @@ import {
   CampaignPaperFormDocument,
   type CampaignPaperData,
 } from '@/app/lib/campaign-paper-form-pdf'
+import { loadLogoBuffer } from '@/app/lib/logo-buffer'
 
 async function checkAdmin(): Promise<boolean> {
   const cookieStore = await cookies()
@@ -55,6 +56,8 @@ export async function GET(
     where: { id: 'singleton' },
   })
 
+  const logo = await loadLogoBuffer()
+
   const data: CampaignPaperData = {
     businessName: settings?.businessName ?? 'Smelly Melly',
     campaignName: campaign.name,
@@ -62,6 +65,8 @@ export async function GET(
     customerPriceCents: campaign.customerPriceCents,
     buyerSlots,
     partyUrl,
+    logoBuffer: logo?.buffer ?? null,
+    logoFormat: logo?.format ?? null,
     variants: campaign.variants.map((cv) => ({
       variantId: cv.variant.id,
       label: `${cv.variant.product.name} · ${cv.variant.name}`,

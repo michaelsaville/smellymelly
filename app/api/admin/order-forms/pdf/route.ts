@@ -9,6 +9,7 @@ import {
   type OrderFormData,
   type OrderFormProduct,
 } from '@/app/lib/order-form-pdf'
+import { loadLogoBuffer } from '@/app/lib/logo-buffer'
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR || '/uploads'
 
@@ -91,11 +92,15 @@ export async function GET(_req: NextRequest) {
     paymentNote = "Pay with cash or check on delivery. We'll confirm your total when we deliver."
   }
 
+  const logo = await loadLogoBuffer()
+
   const data: OrderFormData = {
     businessName: settings?.businessName ?? 'Smelly Melly',
     businessPhone: settings?.businessPhone ?? null,
     businessEmail: settings?.businessEmail ?? null,
     paymentNote,
+    logoBuffer: logo?.buffer ?? null,
+    logoFormat: logo?.format ?? null,
     products: productsForPdf,
   }
 

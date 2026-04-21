@@ -87,12 +87,31 @@ function orderTable(items: SM_OrderItem[]): { text: string; html: string } {
 
 // Minimal branded template. Matches the brand-terra (#C67D4A) accent used on
 // the site. Inline styles because most mail clients strip <style>.
-function wrap(title: string, bodyHtml: string): string {
+// Pulls the uploaded logo from settings when available — the image URL is
+// absolutised against PUBLIC_URL so it renders inside the recipient's inbox.
+async function wrap(title: string, bodyHtml: string): Promise<string> {
+  let logoHtml = ''
+  try {
+    const settings = await prisma.sM_Settings.findUnique({
+      where: { id: 'singleton' },
+      select: { logoUrl: true },
+    })
+    if (settings?.logoUrl) {
+      const absUrl = settings.logoUrl.startsWith('http')
+        ? settings.logoUrl
+        : `${STORE_URL.replace(/\/$/, '')}${settings.logoUrl}`
+      logoHtml = `<div style="text-align:center;margin-bottom:16px"><img src="${absUrl}" alt="Smelly Melly" style="max-height:72px;width:auto"></div>`
+    }
+  } catch {
+    // Logo is decorative; never block email on a settings read.
+  }
+
   return `<!doctype html><html><body style="margin:0;font-family:Georgia,serif;background:#faf6f1;color:#3d2817">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#faf6f1;padding:32px 16px">
 <tr><td align="center">
 <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fff;border-radius:12px;padding:32px">
 <tr><td>
+${logoHtml}
 <h1 style="margin:0 0 16px;font-size:24px;color:#C67D4A">${escapeHtml(title)}</h1>
 ${bodyHtml}
 <hr style="border:none;border-top:1px solid #eee;margin:32px 0">
@@ -201,7 +220,7 @@ ${order.taxCents > 0 ? `<tr><td style="color:#8a7360">Tax</td><td style="text-al
       ? `<p style="margin:24px 0 0;font-size:14px"><strong>Shipping to:</strong><br>${escapeHtml(order.shippingName || '')}<br>${escapeHtml(order.shippingAddress || '')}<br>${escapeHtml(order.shippingCity || '')}, ${escapeHtml(order.shippingState || '')} ${escapeHtml(order.shippingZip || '')}</p>`
       : `<p style="margin:24px 0 0;font-size:14px"><strong>Fulfillment:</strong> pickup</p>`
 
-  const html = wrap(
+  const html = await wrap(
     `Order #${orderNum}`,
     `<p>Hi ${escapeHtml(order.customerName)},</p>
 <p>Thanks so much for your order! Here's a copy for your records.</p>
@@ -239,7 +258,7 @@ Tracking: ${order.trackingNumber}
 Thanks again for supporting a handmade small business. Enjoy!
 
 — Mel`
-  const html = wrap(
+  const html = await wrap(
     `Order #${orderNum} is on its way!`,
     `<p>Hi ${escapeHtml(order.customerName)},</p>
 <p>Good news — your order has shipped.</p>
@@ -269,7 +288,7 @@ If you loved what you got, I'd be so grateful if you'd share it with a friend or
 
 — Mel
 ${STORE_URL}`
-  const html = wrap(
+  const html = await wrap(
     `Thanks for giving us a try!`,
     `<p>Hi ${escapeHtml(customer.name)},</p>
 <p>It's been about a week since your first Smelly Melly order, and I just wanted to say thanks. Every package I send out is something I'm proud of — it means a lot that you gave us a try.</p>
@@ -289,7 +308,7 @@ Thanks for being part of the Smelly Melly story.
 
 — Mel
 ${STORE_URL}`
-  const html = wrap(
+  const html = await wrap(
     `We miss you!`,
     `<p>Hi ${escapeHtml(customer.name)},</p>
 <p>It's been a while! I've been making new scents and experimenting with some fun recipes since we last saw you. If you're due for a restock — or curious what's new — come take a peek.</p>
@@ -310,7 +329,7 @@ Thanks for being part of the Smelly Melly family.
 
 — Mel
 ${STORE_URL}`
-  const html = wrap(
+  const html = await wrap(
     `Happy birthday!`,
     `<p>Happy birthday, ${escapeHtml(customer.name)}! 🎂</p>
 <p>Hope your day is full of people who love you, your favorite foods, and a little bit of magic.</p>
@@ -335,7 +354,7 @@ export async function sendContactFormRelay(input: {
 From: ${input.name} <${input.email}>
 
 ${input.message}`
-  const html = wrap(
+  const html = await wrap(
     'New contact-form message',
     `<p><strong>From:</strong> ${escapeHtml(input.name)} &lt;<a href="mailto:${encodeURIComponent(input.email)}" style="color:#C67D4A">${escapeHtml(input.email)}</a>&gt;</p>
 <p style="margin:16px 0;padding:16px;background:#faf6f1;border-radius:8px;white-space:pre-wrap">${escapeHtml(input.message)}</p>
