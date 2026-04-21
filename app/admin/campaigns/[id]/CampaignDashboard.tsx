@@ -308,6 +308,35 @@ export function CampaignDashboard({ origin, campaign, products, stats }: Props) 
         </div>
       </section>
 
+      {/* Paper fundraiser form */}
+      <section className="card space-y-3">
+        <h2 className="font-display text-sm font-semibold uppercase tracking-wider text-brand-brown/60">
+          Paper fundraiser form
+        </h2>
+        <p className="text-sm text-brand-brown/70">
+          Print a multi-buyer roster sheet for this campaign — 15 buyer slots,
+          campaign pricing, only the variants you picked. Take photos of the
+          filled-in sheets and the scanner creates one order per buyer tagged
+          with this campaign.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <a
+            href={`/api/admin/campaigns/${campaign.id}/paper-form`}
+            target="_blank"
+            rel="noopener"
+            className="btn-secondary text-sm"
+          >
+            🖨️ Download paper form (PDF)
+          </a>
+          <a
+            href={`/admin/campaigns/${campaign.id}/scan`}
+            className="btn-secondary text-sm"
+          >
+            📷 Scan completed form
+          </a>
+        </div>
+      </section>
+
       {/* Stats */}
       <div className="grid gap-3 sm:grid-cols-4">
         <StatCard label="Orders" value={campaign.orders.length.toString()} />
