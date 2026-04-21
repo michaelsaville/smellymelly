@@ -20,14 +20,13 @@ export default async function NewProductPage() {
     select: { id: true, name: true },
   })
 
-  // Seed default categories if none exist
+  // Seed default categories if none exist. Slug `candles` is a legacy
+  // identifier for the Home Fragrance category (kept for URL continuity).
   if (categories.length === 0) {
     const defaults = [
-      { name: 'Candles', slug: 'candles', sortOrder: 1 },
+      { name: 'Home Fragrance', slug: 'candles', sortOrder: 1 },
       { name: 'Bath & Body', slug: 'bath-body', sortOrder: 3 },
       { name: 'Lip Care', slug: 'lip-care', sortOrder: 4 },
-      { name: 'Beard Oil', slug: 'beard-oil', sortOrder: 5 },
-      { name: 'Beard Balm', slug: 'beard-balm', sortOrder: 6 },
     ]
     for (const cat of defaults) {
       await prisma.sM_Category.create({ data: cat })

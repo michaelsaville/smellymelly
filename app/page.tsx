@@ -8,18 +8,27 @@ function formatPrice(cents: number) {
   return `$${(cents / 100).toFixed(2)}`
 }
 
+// Key is category slug — `candles` is the legacy slug for the Home
+// Fragrance category (wax melts + room fragrance sprays), kept for URL
+// continuity. Display name comes from the DB.
 const categoryEmojis: Record<string, string> = {
-  candles: '🛋️',
+  candles: '🏠',
   'bath-body': '🛁',
-  'lip-care': '👄',
+  'lip-care': '💋',
   'beard-oil': '🧴',
   'beard-balm': '🧔',
 }
 
 export default async function HomePage() {
   const [categories, featuredProducts] = await Promise.all([
+    // Only surface categories that actually have a live product — keeps
+    // empty category tiles off the homepage if Mel seeded a category but
+    // hasn't added products yet.
     prisma.sM_Category.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        products: { some: { isActive: true } },
+      },
       orderBy: { sortOrder: 'asc' },
     }),
     prisma.sM_Product.findMany({
@@ -50,8 +59,8 @@ export default async function HomePage() {
             <span className="text-brand-terra">scented with joy</span>
           </h1>
           <p className="mt-6 text-lg text-brand-brown/70 max-w-xl mx-auto">
-            Small-batch home fragrance, soaps, bath bombs, and body care
-            products — made by hand in Cumberland, Maryland.
+            Small-batch body butter, bath salts, wax melts, room fragrance,
+            and lip balm — made by hand in Cumberland, Maryland.
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <Link href="/shop" className="btn-primary text-base px-8 py-3">

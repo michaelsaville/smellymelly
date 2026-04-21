@@ -4,7 +4,7 @@ import './globals.css'
 const SITE_URL = process.env.PUBLIC_URL || 'https://smellymelly.net'
 const SITE_NAME = 'Smelly Melly'
 const DEFAULT_DESCRIPTION =
-  'Handcrafted candles, soaps, bath bombs, lip balm, beard balm, and more — made by hand in small batches in Cumberland, Maryland.'
+  'Handcrafted body butter, bath salts, body scrub, wax melts, room fragrance, and lip balm — made by hand in small batches in Cumberland, Maryland.'
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -16,11 +16,12 @@ export const metadata: Metadata = {
   applicationName: SITE_NAME,
   authors: [{ name: 'Smelly Melly' }],
   keywords: [
-    'handmade soap',
-    'candles',
-    'bath bombs',
+    'handmade body butter',
+    'bath salts',
+    'body scrub',
+    'wax melts',
+    'room fragrance',
     'lip balm',
-    'beard balm',
     'bath and body',
     'Cumberland Maryland',
     'small batch',

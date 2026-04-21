@@ -6,7 +6,7 @@ import StoreLayout from '@/app/components/StoreLayout'
 export const metadata: Metadata = {
   title: 'Shop',
   description:
-    'Browse our full lineup of handmade candles, soaps, bath bombs, lip balm, and beard balm — all crafted in small batches.',
+    'Browse our full lineup of handmade body butter, bath salts, body scrub, wax melts, room fragrance, and lip balm — all crafted in small batches.',
 }
 
 export const dynamic = 'force-dynamic'
@@ -115,10 +115,10 @@ export default async function ShopPage({
                       ) : (
                         <div className="absolute inset-0 flex items-center justify-center">
                           <span className="text-4xl opacity-40">
-                            {product.category?.name === 'Candles' ? '🕯️' :
-                             product.category?.name === 'Soaps' ? '🧼' :
-                             product.category?.name === 'Bath Bombs' ? '🛁' :
-                             product.category?.name === 'Lip Balm' ? '💋' :
+                            {product.category?.name === 'Home Fragrance' ? '🏠' :
+                             product.category?.name === 'Bath & Body' ? '🛁' :
+                             product.category?.name === 'Lip Care' ? '💋' :
+                             product.category?.name === 'Beard Oil' ? '🧴' :
                              product.category?.name === 'Beard Balm' ? '🧔' : '✨'}
                           </span>
                         </div>

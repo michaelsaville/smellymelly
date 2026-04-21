@@ -64,8 +64,9 @@ export default function TermsPage() {
           using the product and consult a medical professional.
         </p>
         <p>
-          Candles, wax melts, and similar items must be used as directed.
-          Never leave a burning candle unattended.
+          Wax melts and room fragrance sprays must be used as directed —
+          only with a proper wax warmer for melts, and away from flames for
+          sprays. Keep out of reach of children and pets.
         </p>
 
         <h2 className="font-display text-2xl font-semibold text-brand-dark pt-4">

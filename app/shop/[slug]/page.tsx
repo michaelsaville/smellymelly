@@ -112,10 +112,10 @@ export default async function ProductPage({
                 ) : (
                   <div className="h-full w-full flex items-center justify-center">
                     <span className="text-6xl opacity-30">
-                      {product.category?.name === 'Candles' ? '🕯️' :
-                       product.category?.name === 'Soaps' ? '🧼' :
-                       product.category?.name === 'Bath Bombs' ? '🛁' :
-                       product.category?.name === 'Lip Balm' ? '💋' :
+                      {product.category?.name === 'Home Fragrance' ? '🏠' :
+                       product.category?.name === 'Bath & Body' ? '🛁' :
+                       product.category?.name === 'Lip Care' ? '💋' :
+                       product.category?.name === 'Beard Oil' ? '🧴' :
                        product.category?.name === 'Beard Balm' ? '🧔' : '✨'}
                     </span>
                   </div>

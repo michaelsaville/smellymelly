@@ -16,7 +16,7 @@ import {
 
 export interface CampaignPaperVariant {
   variantId: string
-  label: string // "Candles · Vanilla"
+  label: string // "Body Butter · Vanilla - 4oz"
 }
 
 export interface CampaignPaperData {

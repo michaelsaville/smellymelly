@@ -4,7 +4,7 @@ import StoreLayout from '@/app/components/StoreLayout'
 export const metadata: Metadata = {
   title: 'About',
   description:
-    'Meet Mel — the maker behind Smelly Melly. Small-batch bath and body products handcrafted in Cumberland, Maryland.',
+    'Meet Mel — the maker behind Smelly Melly. Small-batch body butter, bath salts, wax melts, and lip balm handcrafted in Cumberland, Maryland.',
 }
 
 export default function AboutPage() {
@@ -23,48 +23,66 @@ export default function AboutPage() {
 
       <div className="mx-auto max-w-3xl px-6 py-16 space-y-6 text-brand-brown leading-relaxed">
         <p>
-          Hi there, I&apos;m Mel! What started as a hobby in my kitchen has
-          grown into a labor of love. I make every single candle, soap, bath
-          bomb, and body care product by hand using carefully chosen
-          ingredients that are gentle on your skin and kind to the earth.
+          Hi there, I&apos;m Mel! What started as a kitchen hobby has turned
+          into a full-time love affair with good scent. Every jar, every
+          tube, every little package of wax melts is made by hand, in small
+          batches, right here in Cumberland.
         </p>
 
-        <p>
-          Growing up in Cumberland, Maryland, I was always surrounded by the scents
-          of wildflowers, fresh rain, and wood smoke. Those memories inspire
-          every fragrance I create. Whether it&apos;s a warm vanilla candle
-          for a cozy evening or a zesty citrus soap to start your morning,
-          each product is crafted in small batches to ensure the highest
-          quality.
-        </p>
+        <p>Here&apos;s what you&apos;ll find on the shelves:</p>
+        <ul className="list-disc pl-6 space-y-1">
+          <li>
+            <strong>Body butter</strong> in 4 oz and 8 oz jars — scents from
+            cozy (Vanilla, Cocoa Butter, Cranberry Cider) to playful
+            (Birthday Cake, Fruit Loop, Monkey Farts) to grown-up
+            (Mahogany Teakwood, Tobacco Vanilla, Noir).
+          </li>
+          <li>
+            <strong>Body scrubs</strong> that leave your skin soft without
+            a chemistry-class ingredient list.
+          </li>
+          <li>
+            <strong>Bath salts</strong> for long soaks on the days you
+            need one.
+          </li>
+          <li>
+            <strong>Wax melts and room fragrance sprays</strong> so your
+            house smells like something you actually want to come home to.
+          </li>
+          <li>
+            <strong>Lip balm</strong> in a handful of flavors — Bubblegum,
+            Peppermint, Spearmint.
+          </li>
+        </ul>
 
         <p>
-          I believe that self-care shouldn&apos;t come with a list of
-          ingredients you can&apos;t pronounce. That&apos;s why I keep things
-          simple: natural oils, butters, essential oils, and skin-safe
-          fragrances. No harsh chemicals, no fillers, no compromise.
+          I stick to natural oils, butters, and skin-safe fragrance —
+          nothing you can&apos;t pronounce, nothing you don&apos;t need.
+          The scents are inspired by the stuff I grew up around: wildflowers
+          after a rain, fresh-baked mornings, wood smoke on a back porch.
         </p>
 
         <div className="card bg-brand-cream/50 text-center">
           <p className="font-display text-xl font-semibold text-brand-terra">
-            &ldquo;Life is too short for boring soap.&rdquo;
+            &ldquo;Every jar made small. Every scent made to matter.&rdquo;
           </p>
           <p className="mt-2 text-sm text-brand-brown/60">&mdash; Mel</p>
         </div>
 
         <p>
-          Every order is wrapped with care and shipped from my workshop here
-          in the Mountain State. Whether you&apos;re treating yourself or
-          gifting something special to someone you love, I hope my products
-          bring a little joy to your day.
+          Every order is packed by me. If you&apos;re picking up through a
+          fundraiser host, I hand the bundle to them — if you&apos;re
+          ordering online, it goes straight to the post office. Either way,
+          if something isn&apos;t right when it lands, tell me and I&apos;ll
+          make it right.
         </p>
 
         <p className="text-brand-brown/60 text-sm">
-          Have questions or special requests? Don&apos;t hesitate to{' '}
+          Questions, custom scent requests, wholesale or party hosting?{' '}
           <a href="/contact" className="text-brand-terra hover:underline">
-            get in touch
+            Drop me a line
           </a>
-          . I&apos;d love to hear from you!
+          — I&apos;d love to hear from you.
         </p>
       </div>
     </StoreLayout>
