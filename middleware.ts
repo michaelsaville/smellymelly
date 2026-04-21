@@ -4,9 +4,11 @@ import { prisma } from '@/app/lib/prisma'
 // Use the node runtime so Prisma works in middleware (default is edge).
 export const config = {
   matcher: [
-    // Skip static assets + _next internals. Everything else passes through
-    // and the logic below decides what to do.
-    '/((?!_next/|favicon.ico|robots.txt|sitemap.xml|uploads/|api/uploads/).*)',
+    // Skip static assets + _next internals + a few endpoints that must
+    // always serve (favicon resizer, public settings shape for the nav
+    // logo). Everything else passes through and the logic below decides
+    // what to do.
+    '/((?!_next/|favicon.ico|robots.txt|sitemap.xml|uploads/|api/uploads/|api/favicon/|api/settings/public).*)',
   ],
 }
 
