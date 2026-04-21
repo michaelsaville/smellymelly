@@ -265,6 +265,20 @@ model SM_Campaign {
 }
 
 /// Which product variants are sellable in a given campaign.
+/// Editable-copy overrides for public pages. Each row overrides a
+/// single copy block keyed by a dotted identifier like `about.intro`.
+/// Missing rows fall through to the hardcoded fallback in
+/// `app/lib/page-text.ts` — that's also where the full key registry
+/// lives, so new editable blocks get added in code first.
+model SM_PageText {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("sm_page_text")
+  @@schema("smellymelly")
+}
+
 model SM_CampaignVariant {
   id         String   @id @default(cuid())
   campaignId String
