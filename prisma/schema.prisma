@@ -22,6 +22,10 @@ model SM_Category {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Shared base recipe for every product in this category. Each product can
+  // still add its own one-off extras via SM_Product.ingredients.
+  baseIngredients String?
+
   products SM_Product[]
 
   @@map("sm_categories")
@@ -486,6 +490,11 @@ model SM_Settings {
   venmoHandle         String @default("")
   cashAppTag          String @default("")
   paymentInstructions String @default("")
+
+  // Legal/CYA blurb appended to the Ingredients & Disclosure box on every
+  // product page. Pair this with SM_Category.baseIngredients (shared recipe
+  // per product type) and SM_Product.ingredients (per-product extras).
+  productDisclaimer String @default("Handmade in small batches in Cumberland, MD. May contain nuts, shea, beeswax, essential oils, or fragrance oils. Patch-test on a small area before full use and discontinue if irritation occurs. For external use only — keep out of reach of children. Not evaluated by the FDA; not intended to diagnose, treat, cure, or prevent any disease.")
 
   @@map("sm_settings")
   @@schema("smellymelly")

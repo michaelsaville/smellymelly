@@ -3,12 +3,20 @@
 import { useRef, useState, type ChangeEvent } from 'react'
 import { useRouter } from 'next/navigation'
 
+interface CategoryTemplate {
+  id: string
+  name: string
+  baseIngredients: string
+}
+
 interface Props {
   logoUrl: string | null
   venmoHandle: string
   cashAppTag: string
   paymentInstructions: string
   taxRate: number
+  productDisclaimer: string
+  categories: CategoryTemplate[]
 }
 
 export default function SettingsForm({
@@ -17,6 +25,8 @@ export default function SettingsForm({
   cashAppTag: initialCashApp,
   paymentInstructions: initialInstructions,
   taxRate: initialTaxRate,
+  productDisclaimer: initialDisclaimer,
+  categories: initialCategories,
 }: Props) {
   const router = useRouter()
   const [logoUrl, setLogoUrl] = useState(initialLogoUrl)
@@ -28,8 +38,16 @@ export default function SettingsForm({
   const [cashAppTag, setCashAppTag] = useState(initialCashApp)
   const [paymentInstructions, setPaymentInstructions] = useState(initialInstructions)
   const [taxRatePct, setTaxRatePct] = useState(String((initialTaxRate * 100).toFixed(2)))
+  const [productDisclaimer, setProductDisclaimer] = useState(initialDisclaimer)
+  const [categories, setCategories] = useState<CategoryTemplate[]>(initialCategories)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
+
+  function updateCategoryIngredients(id: string, value: string) {
+    setCategories((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, baseIngredients: value } : c)),
+    )
+  }
 
   async function uploadLogo(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -88,6 +106,11 @@ export default function SettingsForm({
           cashAppTag: cashAppTag.trim(),
           paymentInstructions: paymentInstructions.trim(),
           taxRate: pct / 100,
+          productDisclaimer: productDisclaimer.trim(),
+          categories: categories.map((c) => ({
+            id: c.id,
+            baseIngredients: c.baseIngredients.trim(),
+          })),
         }),
       })
       const data = await res.json()
@@ -238,6 +261,58 @@ export default function SettingsForm({
             className="input max-w-[160px]"
           />
         </div>
+      </div>
+
+      <div className="card">
+        <h2 className="font-display text-lg font-semibold text-brand-dark mb-1">
+          Category ingredient templates
+        </h2>
+        <p className="text-xs text-brand-brown/60 mb-4">
+          Shared base recipe for every product in a category — Body Butter,
+          Lip Balm, etc. Shown in the Ingredients & Disclosure box on each
+          product page. Per-product extras still go on the product itself.
+        </p>
+        {categories.length === 0 ? (
+          <p className="text-sm text-brand-brown/60">
+            No categories yet. Add some, then come back to fill in templates.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {categories.map((c) => (
+              <div key={c.id}>
+                <label className="block text-xs text-brand-brown/60 mb-1">
+                  {c.name}
+                </label>
+                <textarea
+                  value={c.baseIngredients}
+                  onChange={(e) =>
+                    updateCategoryIngredients(c.id, e.target.value)
+                  }
+                  rows={3}
+                  placeholder="e.g. Shea butter, mango butter, jojoba oil, vitamin E, fragrance oil"
+                  className="input resize-y"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <h2 className="font-display text-lg font-semibold text-brand-dark mb-1">
+          Product disclaimer
+        </h2>
+        <p className="text-xs text-brand-brown/60 mb-4">
+          Legal blurb appended to every product&apos;s Ingredients & Disclosure
+          box — allergen warnings, FDA disclaimer, patch-test reminder, etc.
+        </p>
+        <textarea
+          value={productDisclaimer}
+          onChange={(e) => setProductDisclaimer(e.target.value)}
+          rows={5}
+          placeholder="Handmade in small batches. May contain nuts, shea, beeswax, essential oils…"
+          className="input resize-y"
+        />
       </div>
 
       <div className="flex items-center justify-between">

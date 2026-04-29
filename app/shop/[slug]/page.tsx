@@ -53,21 +53,35 @@ export default async function ProductPage({
 }) {
   const { slug } = await params
 
-  const product = await prisma.sM_Product.findFirst({
-    where: { slug, isActive: true },
-    include: {
-      category: true,
-      variants: {
-        where: { isActive: true },
-        orderBy: { priceCents: 'asc' },
+  const [product, settings] = await Promise.all([
+    prisma.sM_Product.findFirst({
+      where: { slug, isActive: true },
+      include: {
+        category: true,
+        variants: {
+          where: { isActive: true },
+          orderBy: { priceCents: 'asc' },
+        },
+        images: {
+          orderBy: { sortOrder: 'asc' },
+        },
       },
-      images: {
-        orderBy: { sortOrder: 'asc' },
-      },
-    },
-  })
+    }),
+    prisma.sM_Settings.findFirst({
+      where: { id: 'singleton' },
+      select: { productDisclaimer: true },
+    }),
+  ])
 
   if (!product) redirect('/shop')
+
+  const baseIngredients = product.category?.baseIngredients?.trim() ?? ''
+  const extraIngredients = product.ingredients?.trim() ?? ''
+  const disclaimer = settings?.productDisclaimer?.trim() ?? ''
+  const showDisclosure =
+    baseIngredients.length > 0 ||
+    extraIngredients.length > 0 ||
+    disclaimer.length > 0
 
   const prices = product.variants.map((v) => v.priceCents)
   const minPrice = prices.length > 0 ? Math.min(...prices) : null
@@ -182,6 +196,31 @@ export default async function ProductPage({
                   {product.description.split('\n').map((p, i) => (
                     <p key={i}>{p}</p>
                   ))}
+                </div>
+              )}
+
+              {/* Ingredients & Disclosure */}
+              {showDisclosure && (
+                <div className="rounded-lg border border-brand-warm/60 bg-brand-cream/40 p-4 text-sm text-brand-brown/80">
+                  <h2 className="font-display text-base font-semibold text-brand-dark mb-2">
+                    Ingredients & disclosure
+                  </h2>
+                  {baseIngredients && (
+                    <p className="leading-relaxed">{baseIngredients}</p>
+                  )}
+                  {extraIngredients && (
+                    <p className="mt-2 leading-relaxed">
+                      <span className="font-medium text-brand-dark">
+                        Plus in this product:
+                      </span>{' '}
+                      {extraIngredients}
+                    </p>
+                  )}
+                  {disclaimer && (
+                    <p className="mt-3 text-xs italic leading-relaxed text-brand-brown/70">
+                      {disclaimer}
+                    </p>
+                  )}
                 </div>
               )}
 

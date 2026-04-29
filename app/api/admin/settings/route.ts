@@ -7,11 +7,18 @@ async function checkAdmin(): Promise<boolean> {
   return cookieStore.get('sm_admin')?.value === 'sm_authenticated'
 }
 
+interface CategoryUpdate {
+  id: string
+  baseIngredients: string
+}
+
 interface Body {
   venmoHandle?: string
   cashAppTag?: string
   paymentInstructions?: string
   taxRate?: number
+  productDisclaimer?: string
+  categories?: CategoryUpdate[]
 }
 
 export async function POST(req: NextRequest) {
@@ -25,6 +32,7 @@ export async function POST(req: NextRequest) {
     cashAppTag?: string
     paymentInstructions?: string
     taxRate?: number
+    productDisclaimer?: string
   } = {}
 
   if (typeof body.venmoHandle === 'string') data.venmoHandle = body.venmoHandle
@@ -41,15 +49,39 @@ export async function POST(req: NextRequest) {
     }
     data.taxRate = body.taxRate
   }
+  if (typeof body.productDisclaimer === 'string') {
+    data.productDisclaimer = body.productDisclaimer
+  }
 
-  if (Object.keys(data).length === 0) {
+  const categoryUpdates = Array.isArray(body.categories)
+    ? body.categories.filter(
+        (c): c is CategoryUpdate =>
+          !!c &&
+          typeof c.id === 'string' &&
+          typeof c.baseIngredients === 'string',
+      )
+    : []
+
+  if (Object.keys(data).length === 0 && categoryUpdates.length === 0) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
   }
 
-  await prisma.sM_Settings.upsert({
-    where: { id: 'singleton' },
-    create: { id: 'singleton', ...data },
-    update: data,
-  })
+  await prisma.$transaction([
+    ...(Object.keys(data).length > 0
+      ? [
+          prisma.sM_Settings.upsert({
+            where: { id: 'singleton' },
+            create: { id: 'singleton', ...data },
+            update: data,
+          }),
+        ]
+      : []),
+    ...categoryUpdates.map((c) =>
+      prisma.sM_Category.update({
+        where: { id: c.id },
+        data: { baseIngredients: c.baseIngredients || null },
+      }),
+    ),
+  ])
   return NextResponse.json({ ok: true })
 }

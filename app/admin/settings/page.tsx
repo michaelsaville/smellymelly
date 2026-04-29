@@ -7,9 +7,13 @@ export const dynamic = 'force-dynamic'
 export default async function SettingsPage() {
   await requireAdmin()
 
-  const settings = await prisma.sM_Settings.findFirst({
-    where: { id: 'singleton' },
-  })
+  const [settings, categories] = await Promise.all([
+    prisma.sM_Settings.findFirst({ where: { id: 'singleton' } }),
+    prisma.sM_Category.findMany({
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      select: { id: true, name: true, baseIngredients: true },
+    }),
+  ])
 
   return (
     <div>
@@ -17,7 +21,8 @@ export default async function SettingsPage() {
         Settings
       </h1>
       <p className="text-sm text-brand-brown/60 mb-6">
-        Payment handles and tax settings. Maintenance mode lives on the dashboard.
+        Payment handles, tax, ingredient templates, and the product disclaimer.
+        Maintenance mode lives on the dashboard.
       </p>
 
       <SettingsForm
@@ -26,6 +31,12 @@ export default async function SettingsPage() {
         cashAppTag={settings?.cashAppTag ?? ''}
         paymentInstructions={settings?.paymentInstructions ?? ''}
         taxRate={settings?.taxRate ?? 0.06}
+        productDisclaimer={settings?.productDisclaimer ?? ''}
+        categories={categories.map((c) => ({
+          id: c.id,
+          name: c.name,
+          baseIngredients: c.baseIngredients ?? '',
+        }))}
       />
     </div>
   )
