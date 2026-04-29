@@ -116,7 +116,7 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'update_product',
-    description: 'Update product fields like name, description, ingredients, scent, active status, or featured status.',
+    description: 'Update product fields: name, description, ingredients, category, scent, active status, or featured status. Use search_products first to find the productId.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -124,9 +124,91 @@ const tools: Anthropic.Tool[] = [
         name: { type: 'string' },
         description: { type: 'string' },
         ingredients: { type: 'string' },
+        categoryName: {
+          type: 'string',
+          description: 'Move product to a different category. Must match an existing category; use list_categories if unsure.',
+        },
         scent: { type: 'string' },
         isActive: { type: 'boolean' },
         isFeatured: { type: 'boolean' },
+      },
+      required: ['productId'],
+    },
+  },
+  {
+    name: 'update_variant',
+    description: 'Edit fields of a single product variant: name, price, cost, stock, weight, SKU, or active status. Use search_products first to find the variantId. Prices are in cents (e.g. $12.00 = 1200).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        variantId: { type: 'string', description: 'Variant ID to update' },
+        name: {
+          type: 'string',
+          description: 'New variant name. Convention is "Scent - Size" (e.g. "Lavender - 4oz") for multi-size products.',
+        },
+        priceCents: { type: 'number', description: 'New price in cents' },
+        costCents: { type: 'number', description: 'New cost in cents' },
+        stockQuantity: { type: 'number', description: 'New stock count' },
+        weightOz: { type: 'number', description: 'New weight in oz (used for shipping label calculation)' },
+        sku: { type: 'string', description: 'New SKU code (empty string clears it)' },
+        isActive: {
+          type: 'boolean',
+          description: 'Whether this variant is visible in the store',
+        },
+      },
+      required: ['variantId'],
+    },
+  },
+  {
+    name: 'delete_variant',
+    description:
+      'Remove a variant. If it has order history, it is deactivated instead of hard-deleted so past orders remain valid.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        variantId: { type: 'string', description: 'Variant ID to delete' },
+      },
+      required: ['variantId'],
+    },
+  },
+  {
+    name: 'bulk_update_variants',
+    description:
+      'Apply price, stock, or active-status changes to every variant of a product matching an optional size and/or scent filter. Great for "set all 8oz body butters to $23" or "zero out stock for every Lavender variant". IMPORTANT: ALWAYS call with dryRun=true first to preview which variants will change, show the preview to Melly, and only call again with dryRun=false after she confirms.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        productId: {
+          type: 'string',
+          description: 'Product whose variants will be filtered.',
+        },
+        filterSize: {
+          type: 'string',
+          description:
+            'Only affect variants whose size token matches this exactly (case-insensitive, e.g. "4oz", "8oz"). Omit to include all sizes.',
+        },
+        filterScent: {
+          type: 'string',
+          description:
+            'Case-insensitive substring match against the scent part of the variant name. Omit to include all scents.',
+        },
+        setPriceCents: {
+          type: 'number',
+          description: 'Set matching variants to this price in cents (e.g. 2300 = $23.00).',
+        },
+        setStockQuantity: {
+          type: 'number',
+          description: 'Set matching variants to this stock count.',
+        },
+        setActive: {
+          type: 'boolean',
+          description: 'Set isActive on matching variants.',
+        },
+        dryRun: {
+          type: 'boolean',
+          description:
+            'If true or omitted, return a preview of affected variants without writing. Set to false ONLY after Melly confirms the preview.',
+        },
       },
       required: ['productId'],
     },
@@ -530,12 +612,187 @@ async function executeTool(
       if (input.isActive !== undefined) data.isActive = input.isActive
       if (input.isFeatured !== undefined) data.isFeatured = input.isFeatured
 
+      if (input.categoryName !== undefined) {
+        const cat = await prisma.sM_Category.findFirst({
+          where: {
+            name: { equals: input.categoryName, mode: 'insensitive' },
+            isActive: true,
+          },
+          select: { id: true, name: true },
+        })
+        if (!cat) {
+          return JSON.stringify({
+            error: `Category "${input.categoryName}" not found. Use list_categories to see options.`,
+          })
+        }
+        data.categoryId = cat.id
+      }
+
       const product = await prisma.sM_Product.update({
         where: { id: input.productId },
         data,
-        select: { id: true, name: true, scent: true, isActive: true, isFeatured: true },
+        select: {
+          id: true,
+          name: true,
+          scent: true,
+          isActive: true,
+          isFeatured: true,
+          category: { select: { name: true } },
+        },
       })
       return JSON.stringify({ success: true, product })
+    }
+
+    case 'update_variant': {
+      const data: any = {}
+      if (input.name !== undefined) data.name = input.name
+      if (input.priceCents !== undefined) data.priceCents = input.priceCents
+      if (input.costCents !== undefined) data.costCents = input.costCents
+      if (input.stockQuantity !== undefined) data.stockQuantity = input.stockQuantity
+      if (input.weightOz !== undefined) data.weightOz = input.weightOz
+      if (input.sku !== undefined) data.sku = input.sku || null
+      if (input.isActive !== undefined) data.isActive = input.isActive
+
+      if (Object.keys(data).length === 0) {
+        return JSON.stringify({ error: 'No fields provided to update.' })
+      }
+
+      const variant = await prisma.sM_ProductVariant.update({
+        where: { id: input.variantId },
+        data,
+        include: { product: { select: { name: true } } },
+      })
+      return JSON.stringify({
+        success: true,
+        variant: {
+          id: variant.id,
+          product: variant.product.name,
+          name: variant.name,
+          price: money(variant.priceCents),
+          stock: variant.stockQuantity,
+          isActive: variant.isActive,
+        },
+      })
+    }
+
+    case 'delete_variant': {
+      const variant = await prisma.sM_ProductVariant.findUnique({
+        where: { id: input.variantId },
+        include: {
+          product: { select: { name: true } },
+          orderItems: { take: 1, select: { id: true } },
+        },
+      })
+      if (!variant) return JSON.stringify({ error: 'Variant not found' })
+
+      if (variant.orderItems.length > 0) {
+        await prisma.sM_ProductVariant.update({
+          where: { id: input.variantId },
+          data: { isActive: false },
+        })
+        return JSON.stringify({
+          success: true,
+          deactivated: true,
+          reason: 'Variant has order history — deactivated instead of deleted.',
+          variant: { name: variant.name, product: variant.product.name },
+        })
+      }
+
+      await prisma.sM_ProductVariant.delete({ where: { id: input.variantId } })
+      return JSON.stringify({
+        success: true,
+        deleted: true,
+        variant: { name: variant.name, product: variant.product.name },
+      })
+    }
+
+    case 'bulk_update_variants': {
+      const allVariants = await prisma.sM_ProductVariant.findMany({
+        where: { productId: input.productId },
+        include: { product: { select: { name: true } } },
+        orderBy: { name: 'asc' },
+      })
+
+      if (allVariants.length === 0) {
+        return JSON.stringify({ error: 'Product not found or has no variants.' })
+      }
+
+      const SIZE_RE = /^(\d+(?:\.\d+)?)\s*(oz|ml|g|lb)$/i
+      const parse = (n: string) => {
+        const idx = n.lastIndexOf(' - ')
+        if (idx >= 0) {
+          const tail = n.slice(idx + 3).trim()
+          if (SIZE_RE.test(tail)) return { scent: n.slice(0, idx).trim(), size: tail.toLowerCase() }
+        }
+        return { scent: n.trim(), size: '' }
+      }
+
+      const filterSize = input.filterSize?.trim().toLowerCase()
+      const filterScent = input.filterScent?.trim().toLowerCase()
+
+      const matched = allVariants.filter((v) => {
+        const p = parse(v.name)
+        if (filterSize && p.size !== filterSize) return false
+        if (filterScent && !p.scent.toLowerCase().includes(filterScent)) return false
+        return true
+      })
+
+      const data: any = {}
+      if (input.setPriceCents !== undefined) data.priceCents = input.setPriceCents
+      if (input.setStockQuantity !== undefined) data.stockQuantity = input.setStockQuantity
+      if (input.setActive !== undefined) data.isActive = input.setActive
+
+      if (Object.keys(data).length === 0) {
+        return JSON.stringify({ error: 'No set* fields provided; nothing to update.' })
+      }
+
+      const preview = matched.map((v) => ({
+        id: v.id,
+        name: v.name,
+        was: {
+          price: money(v.priceCents),
+          stock: v.stockQuantity,
+          isActive: v.isActive,
+        },
+        willBe: {
+          ...(data.priceCents !== undefined && { price: money(data.priceCents) }),
+          ...(data.stockQuantity !== undefined && { stock: data.stockQuantity }),
+          ...(data.isActive !== undefined && { isActive: data.isActive }),
+        },
+      }))
+
+      // Default to dry-run unless explicitly set to false
+      const isDryRun = input.dryRun !== false
+
+      if (isDryRun) {
+        return JSON.stringify({
+          dryRun: true,
+          product: allVariants[0].product.name,
+          matchCount: matched.length,
+          totalVariants: allVariants.length,
+          preview,
+          hint:
+            matched.length === 0
+              ? 'No variants matched your filter. Check filterSize/filterScent.'
+              : 'Confirm with Melly, then call again with dryRun=false to apply.',
+        })
+      }
+
+      if (matched.length === 0) {
+        return JSON.stringify({ error: 'No variants matched; nothing applied.' })
+      }
+
+      const result = await prisma.sM_ProductVariant.updateMany({
+        where: { id: { in: matched.map((v) => v.id) } },
+        data,
+      })
+
+      return JSON.stringify({
+        success: true,
+        product: allVariants[0].product.name,
+        updated: result.count,
+        changes: preview,
+      })
     }
 
     case 'create_material': {
@@ -939,9 +1196,16 @@ Important context:
 - Products have variants which can be different scents OR different sizes
 - If a product has one scent (like "Lavender Dreams Lip Balm"), the scent goes on the product and variants are sizes
 - If a product has multiple scents (like "Body Scrub" available in many scents), each variant IS a scent
+- Variants combine both axes with the naming convention "Scent - Size" (e.g. "Lavender - 4oz"). The size token must match /\d+(\.\d+)?(oz|ml|g|lb)/i so the storefront can group by size.
 - Stock/inventory is tracked per variant
 - Materials are raw ingredients she buys to make products
 - Recipes link materials to products to calculate cost of goods
+
+Editing existing products:
+- update_product for top-level fields (name, description, ingredients, category, scent, active/featured)
+- update_variant for a single variant's price/stock/cost/weight/sku/name/active
+- delete_variant to remove (auto-deactivates if there's order history)
+- bulk_update_variants for sweeping changes like "set all 8oz to $23" or "zero stock for every Eucalyptus". ALWAYS call bulk_update_variants with dryRun=true first, show the preview to Melly, and only re-call with dryRun=false after she explicitly confirms. Never skip the preview — bulk mistakes are hard to unwind.
 
 You can also write product descriptions! If Melly asks you to write a description, or if you just created a product and it has no description, offer to generate one. You can write in different tones:
 - "fun" — playful, casual, charming (default)

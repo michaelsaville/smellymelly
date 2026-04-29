@@ -163,22 +163,52 @@ export async function DELETE(
     return NextResponse.json({ error: 'Product not found' }, { status: 404 })
   }
 
-  // Check if any variants have order history
+  // Soft-delete triggers: anything that would break or disrupt by hard-deleting
   const hasOrders = product.variants.some((v) => v.orderItems.length > 0)
+  const variantIds = product.variants.map((v) => v.id)
+  const campaignLinks = variantIds.length
+    ? await prisma.sM_CampaignVariant.findMany({
+        where: { variantId: { in: variantIds } },
+        include: { campaign: { select: { name: true } } },
+      })
+    : []
 
-  if (hasOrders) {
-    // Soft-delete: deactivate instead of deleting
+  if (hasOrders || campaignLinks.length > 0) {
     await prisma.sM_Product.update({
       where: { id },
       data: { isActive: false },
     })
-    return NextResponse.json({ data: { deactivated: true } })
+    const reasons: string[] = []
+    if (hasOrders) reasons.push('has order history')
+    if (campaignLinks.length > 0) {
+      const names = Array.from(new Set(campaignLinks.map((l) => l.campaign.name)))
+      reasons.push(
+        `is used in ${names.length === 1 ? 'campaign' : 'campaigns'}: ${names.join(', ')}`,
+      )
+    }
+    return NextResponse.json({
+      data: { deactivated: true, reason: reasons.join(' and ') },
+    })
   }
 
-  // Hard delete: no order history, safe to remove
-  await prisma.sM_ProductImage.deleteMany({ where: { productId: id } })
-  await prisma.sM_ProductVariant.deleteMany({ where: { productId: id } })
-  await prisma.sM_Product.delete({ where: { id } })
+  // Hard delete: transactionally detach recipes, drop images + variants + product
+  try {
+    await prisma.$transaction([
+      prisma.sM_Recipe.updateMany({ where: { productId: id }, data: { productId: null } }),
+      prisma.sM_ProductImage.deleteMany({ where: { productId: id } }),
+      prisma.sM_ProductVariant.deleteMany({ where: { productId: id } }),
+      prisma.sM_Product.delete({ where: { id } }),
+    ])
+  } catch (e) {
+    console.error('[admin/products] hard-delete failed:', e)
+    return NextResponse.json(
+      {
+        error:
+          'Delete failed — something still references this product. Deactivate it instead, or remove the dependent rows first.',
+      },
+      { status: 500 },
+    )
+  }
 
   return NextResponse.json({ data: { deleted: true } })
 }

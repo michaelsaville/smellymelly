@@ -1,7 +1,30 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+
+const SIZE_RE = /^(\d+(?:\.\d+)?)\s*(oz|ml|g|lb)$/i
+
+function parseName(name: string): { scent: string; size: string } {
+  const idx = name.lastIndexOf(' - ')
+  if (idx >= 0) {
+    const tail = name.slice(idx + 3).trim()
+    if (SIZE_RE.test(tail)) {
+      return { scent: name.slice(0, idx).trim(), size: tail.toLowerCase() }
+    }
+  }
+  return { scent: name.trim(), size: '' }
+}
+
+function sizeWeight(size: string): number {
+  const m = size.match(/^(\d+(?:\.\d+)?)/)
+  return m ? parseFloat(m[1]) : Number.POSITIVE_INFINITY
+}
+
+function reconstructName(scent: string, size: string): string {
+  const s = scent.trim()
+  return size ? `${s} - ${size}` : s
+}
 
 type Category = { id: string; name: string }
 type Image = { id: string; url: string; altText: string | null; sortOrder: number }
@@ -31,7 +54,8 @@ type Product = {
 
 interface VariantInput {
   id?: string
-  name: string
+  scent: string
+  size: string
   priceCents: string
   costCents: string
   weightOz: string
@@ -41,9 +65,11 @@ interface VariantInput {
 }
 
 function variantToInput(v: Variant): VariantInput {
+  const parsed = parseName(v.name)
   return {
     id: v.id,
-    name: v.name,
+    scent: parsed.scent,
+    size: parsed.size,
     priceCents: (v.priceCents / 100).toFixed(2),
     costCents: v.costCents ? (v.costCents / 100).toFixed(2) : '',
     weightOz: v.weightOz?.toString() ?? '',
@@ -53,15 +79,18 @@ function variantToInput(v: Variant): VariantInput {
   }
 }
 
-const emptyVariant = (): VariantInput => ({
-  name: '',
-  priceCents: '',
-  costCents: '',
-  weightOz: '',
-  stockQuantity: '0',
-  sku: '',
-  isActive: true,
-})
+function emptyVariant(size: string = ''): VariantInput {
+  return {
+    scent: '',
+    size,
+    priceCents: '',
+    costCents: '',
+    weightOz: '',
+    stockQuantity: '0',
+    sku: '',
+    isActive: true,
+  }
+}
 
 export default function EditProductForm({
   product,
@@ -81,10 +110,18 @@ export default function EditProductForm({
   const [isFeatured, setIsFeatured] = useState(product.isFeatured)
   const [isActive, setIsActive] = useState(product.isActive)
 
-  // Variants
-  const [variants, setVariants] = useState<VariantInput[]>(
-    product.variants.map(variantToInput),
-  )
+  // Variants — parse names into scent+size and sort stably by scent per size
+  const [variants, setVariants] = useState<VariantInput[]>(() => {
+    const inputs = product.variants.map(variantToInput)
+    return inputs.sort((a, b) => {
+      const sw = sizeWeight(a.size) - sizeWeight(b.size)
+      if (sw !== 0) return sw
+      return a.scent.toLowerCase().localeCompare(b.scent.toLowerCase())
+    })
+  })
+
+  const [showAddScent, setShowAddScent] = useState(false)
+  const [newScentName, setNewScentName] = useState('')
 
   // Images
   const [images, setImages] = useState<Image[]>(product.images)
@@ -97,8 +134,8 @@ export default function EditProductForm({
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
-  function addVariant() {
-    setVariants([...variants, emptyVariant()])
+  function addVariantToSize(size: string) {
+    setVariants([...variants, emptyVariant(size)])
   }
 
   function removeVariant(idx: number) {
@@ -109,6 +146,47 @@ export default function EditProductForm({
     setVariants(
       variants.map((v, i) => (i === idx ? { ...v, [field]: value } : v)),
     )
+  }
+
+  // Distinct sizes present, sorted
+  const sizesPresent = useMemo(() => {
+    const s = Array.from(new Set(variants.map((v) => v.size)))
+    s.sort((a, b) => sizeWeight(a) - sizeWeight(b))
+    return s
+  }, [variants])
+
+  // Group variant indices by size (preserves insertion order within each group)
+  const groupedBySize = useMemo(() => {
+    const map = new Map<string, number[]>()
+    variants.forEach((v, idx) => {
+      const arr = map.get(v.size) ?? []
+      arr.push(idx)
+      map.set(v.size, arr)
+    })
+    return sizesPresent.map((size) => ({ size, indices: map.get(size) ?? [] }))
+  }, [variants, sizesPresent])
+
+  function handleAddScentAllSizes() {
+    const scent = newScentName.trim()
+    if (!scent) return
+    const sizes = sizesPresent.length > 0 ? sizesPresent : ['']
+    const newRows: VariantInput[] = sizes.map((size) => {
+      // Default price = first existing variant's price in that size, if any
+      const sibling = variants.find((v) => v.size === size && v.priceCents)
+      return {
+        scent,
+        size,
+        priceCents: sibling?.priceCents ?? '',
+        costCents: '',
+        weightOz: '',
+        stockQuantity: '0',
+        sku: '',
+        isActive: true,
+      }
+    })
+    setVariants([...variants, ...newRows])
+    setNewScentName('')
+    setShowAddScent(false)
   }
 
   // --- Image upload ---
@@ -172,10 +250,10 @@ export default function EditProductForm({
     setSuccess(null)
 
     const variantData = variants
-      .filter((v) => v.name.trim())
+      .filter((v) => v.scent.trim())
       .map((v) => ({
         id: v.id,
-        name: v.name.trim(),
+        name: reconstructName(v.scent, v.size.trim().toLowerCase()),
         priceCents: Math.round(parseFloat(v.priceCents || '0') * 100),
         costCents: v.costCents ? Math.round(parseFloat(v.costCents) * 100) : null,
         weightOz: v.weightOz ? parseFloat(v.weightOz) : null,
@@ -235,8 +313,11 @@ export default function EditProductForm({
         setIsActive(false)
         setShowDeleteConfirm(false)
         setDeleting(false)
-        setSuccess('Product has order history and was deactivated instead of deleted.')
-        setTimeout(() => setSuccess(null), 5000)
+        const reason = json.data.reason
+          ? `Product was deactivated instead of deleted — it ${json.data.reason}.`
+          : 'Product was deactivated instead of deleted.'
+        setSuccess(reason)
+        setTimeout(() => setSuccess(null), 8000)
       } else {
         router.push('/admin/products')
       }
@@ -399,110 +480,212 @@ export default function EditProductForm({
         <div className="flex items-center justify-between">
           <h2 className="font-display text-lg font-semibold text-brand-dark">
             Variants
+            <span className="ml-2 text-sm font-normal text-brand-brown/50">
+              ({variants.length})
+            </span>
           </h2>
-          <button type="button" onClick={addVariant} className="btn-ghost text-sm">
-            + Add Variant
+          <button
+            type="button"
+            onClick={() => setShowAddScent((s) => !s)}
+            className="btn-ghost text-sm"
+          >
+            + Add Scent
           </button>
         </div>
 
+        {showAddScent && (
+          <div className="rounded-lg border border-brand-terra/40 bg-brand-peach/10 p-3 space-y-2">
+            <label className="block text-xs font-medium text-brand-brown/80">
+              New scent name
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newScentName}
+                onChange={(e) => setNewScentName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleAddScentAllSizes()
+                  }
+                }}
+                placeholder="e.g. Peach Cobbler"
+                className="input text-sm flex-1"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={handleAddScentAllSizes}
+                disabled={!newScentName.trim()}
+                className="btn-primary text-sm disabled:opacity-50"
+              >
+                {sizesPresent.length > 1
+                  ? `Add to all ${sizesPresent.length} sizes`
+                  : 'Add'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddScent(false)
+                  setNewScentName('')
+                }}
+                className="btn-ghost text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+            {sizesPresent.length > 1 && (
+              <p className="text-xs text-brand-brown/50">
+                Creates one variant per existing size ({sizesPresent.join(', ')}),
+                pre-filled with that size&apos;s current price. Edit each row below.
+              </p>
+            )}
+          </div>
+        )}
+
         {variants.length === 0 ? (
-          <p className="text-sm text-brand-brown/50">No variants. Add at least one.</p>
+          <p className="text-sm text-brand-brown/50">
+            No variants yet. Click &quot;+ Add Scent&quot; above to create one.
+          </p>
         ) : (
           <div className="space-y-4">
-            {variants.map((v, idx) => (
+            {groupedBySize.map((group) => (
               <div
-                key={v.id || `new-${idx}`}
-                className={`rounded-lg border p-4 space-y-3 ${
-                  v.isActive
-                    ? 'border-brand-warm/60 bg-surface-muted'
-                    : 'border-red-200 bg-red-50/50'
-                }`}
+                key={group.size || '__default__'}
+                className="rounded-lg border border-brand-warm/60 bg-surface-muted overflow-hidden"
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-brand-brown">
-                    {v.id ? `Variant: ${v.name || '(unnamed)'}` : 'New Variant'}
-                  </span>
-                  <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-1 text-xs text-brand-brown/60">
-                      <input
-                        type="checkbox"
-                        checked={v.isActive}
-                        onChange={(e) => updateVariant(idx, 'isActive', e.target.checked)}
-                        className="rounded border-brand-warm text-brand-terra focus:ring-brand-terra"
-                      />
-                      Active
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => removeVariant(idx)}
-                      className="text-xs text-red-500 hover:text-red-700"
-                    >
-                      Remove
-                    </button>
-                  </div>
+                <div className="flex items-center justify-between border-b border-brand-warm/60 bg-white/40 px-3 py-2">
+                  <h3 className="text-sm font-semibold text-brand-brown">
+                    {group.size || 'Standard'}
+                    <span className="ml-2 text-xs font-normal text-brand-brown/50">
+                      ({group.indices.length})
+                    </span>
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => addVariantToSize(group.size)}
+                    className="text-xs text-brand-terra hover:underline"
+                  >
+                    + Add scent to {group.size || 'Standard'}
+                  </button>
                 </div>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  <div>
-                    <label className="mb-1 block text-xs text-brand-brown/60">Name *</label>
-                    <input
-                      type="text"
-                      value={v.name}
-                      onChange={(e) => updateVariant(idx, 'name', e.target.value)}
-                      className="input text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs text-brand-brown/60">Price ($) *</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={v.priceCents}
-                      onChange={(e) => updateVariant(idx, 'priceCents', e.target.value)}
-                      className="input text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs text-brand-brown/60">Cost ($)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={v.costCents}
-                      onChange={(e) => updateVariant(idx, 'costCents', e.target.value)}
-                      className="input text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs text-brand-brown/60">Weight (oz)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={v.weightOz}
-                      onChange={(e) => updateVariant(idx, 'weightOz', e.target.value)}
-                      className="input text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs text-brand-brown/60">Stock</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={v.stockQuantity}
-                      onChange={(e) => updateVariant(idx, 'stockQuantity', e.target.value)}
-                      className="input text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs text-brand-brown/60">SKU</label>
-                    <input
-                      type="text"
-                      value={v.sku}
-                      onChange={(e) => updateVariant(idx, 'sku', e.target.value)}
-                      className="input text-sm"
-                    />
-                  </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-[10px] font-medium uppercase tracking-wide text-brand-brown/50">
+                        <th className="px-2 py-1.5">Scent</th>
+                        <th className="px-2 py-1.5 w-[90px]">Price $</th>
+                        <th className="px-2 py-1.5 w-[90px]">Cost $</th>
+                        <th className="px-2 py-1.5 w-[70px]">Stock</th>
+                        <th className="px-2 py-1.5 w-[70px]">Oz</th>
+                        <th className="px-2 py-1.5 w-[110px]">SKU</th>
+                        <th className="px-2 py-1.5 w-[60px] text-center">Active</th>
+                        <th className="w-[32px]"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.indices.map((idx) => {
+                        const v = variants[idx]
+                        return (
+                          <tr
+                            key={v.id || `new-${idx}`}
+                            className={`border-t border-brand-warm/30 ${
+                              v.isActive ? '' : 'bg-red-50/40'
+                            }`}
+                          >
+                            <td className="px-2 py-1">
+                              <input
+                                type="text"
+                                value={v.scent}
+                                onChange={(e) =>
+                                  updateVariant(idx, 'scent', e.target.value)
+                                }
+                                placeholder="Scent name"
+                                className="input text-sm w-full"
+                              />
+                            </td>
+                            <td className="px-2 py-1">
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={v.priceCents}
+                                onChange={(e) =>
+                                  updateVariant(idx, 'priceCents', e.target.value)
+                                }
+                                className="input text-sm w-full"
+                              />
+                            </td>
+                            <td className="px-2 py-1">
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={v.costCents}
+                                onChange={(e) =>
+                                  updateVariant(idx, 'costCents', e.target.value)
+                                }
+                                className="input text-sm w-full"
+                              />
+                            </td>
+                            <td className="px-2 py-1">
+                              <input
+                                type="number"
+                                min="0"
+                                value={v.stockQuantity}
+                                onChange={(e) =>
+                                  updateVariant(idx, 'stockQuantity', e.target.value)
+                                }
+                                className="input text-sm w-full"
+                              />
+                            </td>
+                            <td className="px-2 py-1">
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                value={v.weightOz}
+                                onChange={(e) =>
+                                  updateVariant(idx, 'weightOz', e.target.value)
+                                }
+                                className="input text-sm w-full"
+                              />
+                            </td>
+                            <td className="px-2 py-1">
+                              <input
+                                type="text"
+                                value={v.sku}
+                                onChange={(e) =>
+                                  updateVariant(idx, 'sku', e.target.value)
+                                }
+                                className="input text-sm w-full"
+                              />
+                            </td>
+                            <td className="px-2 py-1 text-center">
+                              <input
+                                type="checkbox"
+                                checked={v.isActive}
+                                onChange={(e) =>
+                                  updateVariant(idx, 'isActive', e.target.checked)
+                                }
+                                className="rounded border-brand-warm text-brand-terra focus:ring-brand-terra"
+                              />
+                            </td>
+                            <td className="px-1 py-1 text-center">
+                              <button
+                                type="button"
+                                onClick={() => removeVariant(idx)}
+                                aria-label={`Remove ${v.scent || 'variant'}`}
+                                className="text-lg leading-none text-red-400 hover:text-red-600"
+                              >
+                                ×
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             ))}

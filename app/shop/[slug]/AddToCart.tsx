@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 interface Variant {
   id: string
@@ -20,22 +20,85 @@ function formatPrice(cents: number) {
   return `$${(cents / 100).toFixed(2)}`
 }
 
+const SIZE_RE = /^(\d+(?:\.\d+)?)\s*(oz|ml|g|lb)$/i
+
+function parseVariant(name: string): { scent: string; size: string } {
+  const idx = name.lastIndexOf(' - ')
+  if (idx >= 0) {
+    const tail = name.slice(idx + 3).trim()
+    if (SIZE_RE.test(tail)) {
+      return { scent: name.slice(0, idx).trim(), size: tail.toLowerCase() }
+    }
+  }
+  return { scent: name.trim(), size: '' }
+}
+
+function sizeWeight(size: string): number {
+  const m = size.match(/^(\d+(?:\.\d+)?)/)
+  return m ? parseFloat(m[1]) : Number.POSITIVE_INFINITY
+}
+
+type Parsed = Variant & { scent: string; size: string }
+
 export default function AddToCart({ variants, productName, productSlug, imageUrl }: AddToCartProps) {
-  // Default to first in-stock variant, or first variant if all OOS
-  const firstInStock = variants.find((v) => v.stockQuantity > 0)
-  const [selectedId, setSelectedId] = useState(firstInStock?.id ?? variants[0]?.id ?? '')
+  const parsed = useMemo<Parsed[]>(
+    () => variants.map((v) => ({ ...v, ...parseVariant(v.name) })),
+    [variants],
+  )
+
+  const sizes = useMemo(() => {
+    const s = Array.from(new Set(parsed.map((p) => p.size)))
+    s.sort((a, b) => sizeWeight(a) - sizeWeight(b))
+    return s
+  }, [parsed])
+
+  const showSizeDropdown = sizes.length > 1
+
+  const firstInStock = parsed.find((v) => v.stockQuantity > 0)
+  const initialSize = firstInStock?.size ?? sizes[0] ?? ''
+  const initialScent = firstInStock?.scent ?? null
+
+  const [size, setSize] = useState<string>(initialSize)
+  const [scent, setScent] = useState<string | null>(initialScent)
+  const [scentFilter, setScentFilter] = useState('')
   const [quantity, setQuantity] = useState(1)
   const [added, setAdded] = useState(false)
 
-  const selected = variants.find((v) => v.id === selectedId)
-  const inStock = selected ? selected.stockQuantity > 0 : false
-  const maxQty = selected ? selected.stockQuantity : 0
+  const scentsForSize = useMemo(
+    () => parsed.filter((p) => p.size === size),
+    [parsed, size],
+  )
 
-  function handleSelectVariant(id: string) {
-    setSelectedId(id)
+  const showScentFilter = scentsForSize.length > 12
+
+  const visibleScents = useMemo(() => {
+    if (!scentFilter.trim()) return scentsForSize
+    const q = scentFilter.trim().toLowerCase()
+    return scentsForSize.filter(
+      (p) => p.scent.toLowerCase().includes(q) || p.scent === scent,
+    )
+  }, [scentsForSize, scentFilter, scent])
+
+  function handleSizeChange(newSize: string) {
+    const stillExists = parsed.some((p) => p.size === newSize && p.scent === scent)
+    setSize(newSize)
+    if (!stillExists) setScent(null)
     setQuantity(1)
     setAdded(false)
   }
+
+  function handleScentToggle(target: string) {
+    setScent((prev) => (prev === target ? null : target))
+    setQuantity(1)
+    setAdded(false)
+  }
+
+  const selected =
+    scent !== null
+      ? parsed.find((p) => p.size === size && p.scent === scent) ?? null
+      : null
+  const inStock = selected ? selected.stockQuantity > 0 : false
+  const maxQty = selected ? selected.stockQuantity : 0
 
   function handleAdd() {
     if (!selected || !inStock) return
@@ -73,56 +136,114 @@ export default function AddToCart({ variants, productName, productSlug, imageUrl
   }
 
   if (variants.length === 0) {
-    return (
-      <p className="text-brand-brown/60 italic">This product is currently unavailable.</p>
-    )
+    return <p className="text-brand-brown/60 italic">This product is currently unavailable.</p>
   }
+
+  const hasScentChoice = scentsForSize.some((v) => v.scent.length > 0) && scentsForSize.length > 1
 
   return (
     <div className="space-y-6">
-      {/* Variant selector */}
-      <div>
-        <label className="block text-sm font-medium text-brand-brown mb-2">
-          {variants.length > 1 ? 'Select an option' : 'Option'}
-        </label>
-        <div className="flex flex-wrap gap-2">
-          {variants.map((v) => {
-            const oos = v.stockQuantity <= 0
-            const isSelected = v.id === selectedId
-            return (
-              <button
-                key={v.id}
-                onClick={() => handleSelectVariant(v.id)}
-                disabled={oos}
-                className={`relative rounded-lg border px-4 py-2.5 text-sm font-medium transition-all ${
-                  isSelected
-                    ? 'border-brand-terra bg-brand-terra/5 text-brand-terra ring-1 ring-brand-terra'
-                    : oos
-                    ? 'border-brand-warm/40 bg-surface-muted text-brand-brown/30 cursor-not-allowed'
-                    : 'border-brand-warm/60 text-brand-brown hover:border-brand-terra/40'
-                }`}
-              >
-                <span>{v.name}</span>
-                <span className="ml-2">{formatPrice(v.priceCents)}</span>
-                {oos && (
-                  <span className="ml-2 text-[10px] uppercase tracking-wide text-red-400">
-                    Sold out
-                  </span>
-                )}
-              </button>
-            )
-          })}
+      {showSizeDropdown && (
+        <div>
+          <label htmlFor="size-select" className="mb-2 block text-sm font-medium text-brand-brown">
+            Size
+          </label>
+          <select
+            id="size-select"
+            value={size}
+            onChange={(e) => handleSizeChange(e.target.value)}
+            className="input w-full sm:w-48"
+          >
+            {sizes.map((s) => (
+              <option key={s || 'default'} value={s}>
+                {s || 'Standard'}
+              </option>
+            ))}
+          </select>
         </div>
-      </div>
+      )}
 
-      {/* Quantity + Add to cart */}
-      {selected && inStock && (
+      {hasScentChoice && (
+        <div>
+          <label className="mb-2 block text-sm font-medium text-brand-brown">
+            Scent
+            {scent ? (
+              <span className="ml-2 font-normal text-brand-brown/60">— {scent}</span>
+            ) : (
+              <span className="ml-2 font-normal text-brand-brown/40">
+                (tap one to select)
+              </span>
+            )}
+          </label>
+          {showScentFilter && (
+            <div className="relative mb-3">
+              <input
+                type="text"
+                value={scentFilter}
+                onChange={(e) => setScentFilter(e.target.value)}
+                placeholder={`Filter ${scentsForSize.length} scents…`}
+                className="input w-full pr-8 text-sm"
+              />
+              {scentFilter && (
+                <button
+                  type="button"
+                  onClick={() => setScentFilter('')}
+                  aria-label="Clear filter"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-brand-brown/50 hover:text-brand-brown"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {visibleScents.length === 0 && (
+              <p className="text-sm text-brand-brown/50">No scents match that search.</p>
+            )}
+            {visibleScents.map((v) => {
+              const oos = v.stockQuantity <= 0
+              const isSelected = v.scent === scent
+              return (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => !oos && handleScentToggle(v.scent)}
+                  disabled={oos}
+                  aria-pressed={isSelected}
+                  className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-all ${
+                    isSelected
+                      ? 'border-brand-terra bg-brand-terra text-white shadow-sm'
+                      : oos
+                      ? 'border-brand-warm/40 bg-surface-muted text-brand-brown/30 line-through cursor-not-allowed'
+                      : 'border-brand-warm/60 bg-white/60 text-brand-brown/60 hover:border-brand-terra/60 hover:text-brand-brown'
+                  }`}
+                >
+                  {v.scent}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {!hasScentChoice && scentsForSize.length === 1 && scentsForSize[0].scent && (
+        <div>
+          <label className="mb-2 block text-sm font-medium text-brand-brown">Scent</label>
+          <span className="inline-flex items-center rounded-full border border-brand-warm/60 bg-brand-peach/20 px-3 py-1.5 text-sm font-medium text-brand-brown">
+            {scentsForSize[0].scent}
+          </span>
+        </div>
+      )}
+
+      {selected && inStock ? (
         <div className="flex items-center gap-4">
-          {/* Quantity selector */}
           <div className="flex items-center rounded-lg border border-brand-warm/60">
             <button
+              type="button"
               onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-              className="px-3 py-2 text-brand-brown hover:text-brand-terra transition-colors disabled:opacity-30"
+              className="px-3 py-2 text-brand-brown transition-colors hover:text-brand-terra disabled:opacity-30"
               disabled={quantity <= 1}
             >
               -
@@ -131,19 +252,24 @@ export default function AddToCart({ variants, productName, productSlug, imageUrl
               {quantity}
             </span>
             <button
+              type="button"
               onClick={() => setQuantity((q) => Math.min(maxQty, q + 1))}
-              className="px-3 py-2 text-brand-brown hover:text-brand-terra transition-colors disabled:opacity-30"
+              className="px-3 py-2 text-brand-brown transition-colors hover:text-brand-terra disabled:opacity-30"
               disabled={quantity >= maxQty}
             >
               +
             </button>
           </div>
-
-          {/* Add to cart button */}
-          <button onClick={handleAdd} className="btn-primary flex-1 relative">
+          <button type="button" onClick={handleAdd} className="btn-primary relative flex-1">
             {added ? (
               <span className="flex items-center justify-center gap-2">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={3}
+                >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
                 Added!
@@ -153,12 +279,18 @@ export default function AddToCart({ variants, productName, productSlug, imageUrl
             )}
           </button>
         </div>
-      )}
-
-      {selected && !inStock && (
-        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
-          This option is currently out of stock.
+      ) : selected && !inStock ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          This scent is currently out of stock in this size.
         </div>
+      ) : (
+        <button
+          type="button"
+          disabled
+          className="btn-primary w-full cursor-not-allowed opacity-50"
+        >
+          Select a scent
+        </button>
       )}
     </div>
   )
