@@ -32,6 +32,28 @@ model SM_Category {
   @@schema("smellymelly")
 }
 
+// Common allergens / ingredients-of-concern, scanned against each
+// product's category baseIngredients + per-product extras. Renders as
+// a "Contains X" pill on the product page when matched. Mel manages
+// this list in /admin/settings — no code changes needed to add/edit.
+model SM_Allergen {
+  id        String   @id @default(cuid())
+  label     String   // pill text, e.g. "Shea"
+  // Comma-separated terms to match (case-insensitive, word-boundary).
+  // e.g. "shea" or "beeswax, bees wax". Built into a regex at scan time.
+  matchTerms String
+  // "high" → red pill (top-tier nut/dairy concerns)
+  // "normal" → amber pill (everything else)
+  severity  String   @default("normal")
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("sm_allergens")
+  @@schema("smellymelly")
+}
+
 model SM_Product {
   id          String      @id @default(cuid())
   name        String

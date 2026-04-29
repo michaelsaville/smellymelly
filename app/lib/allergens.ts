@@ -1,34 +1,46 @@
-// Common allergens / ingredients-of-concern in handmade bath & body.
-// Detected by case-insensitive substring match against the combined
-// category baseIngredients + per-product ingredients text. Only matched
-// pills render on the product page — we never claim absence.
+import { prisma } from '@/app/lib/prisma'
 
-interface AllergenPill {
+export type AllergenSeverity = 'high' | 'normal'
+
+export interface AllergenMatch {
   label: string
-  patterns: RegExp[]
+  severity: AllergenSeverity
 }
 
-const ALLERGEN_PILLS: AllergenPill[] = [
-  { label: 'Shea', patterns: [/\bshea\b/i] },
-  { label: 'Mango butter', patterns: [/\bmango\b/i] },
-  { label: 'Coconut', patterns: [/\bcoconut\b/i] },
-  { label: 'Almond', patterns: [/\balmond\b/i] },
-  { label: 'Cocoa butter', patterns: [/\bcocoa\b/i] },
-  { label: 'Argan', patterns: [/\bargan\b/i] },
-  { label: 'Jojoba', patterns: [/\bjojoba\b/i] },
-  { label: 'Beeswax', patterns: [/\bbees?wax\b/i] },
-  { label: 'Soy', patterns: [/\bsoy\b/i] },
-  { label: 'Fragrance', patterns: [/\bfragrance\b/i] },
-  { label: 'Essential oils', patterns: [/\bessential oil/i] },
-  { label: 'Flavor oil', patterns: [/\bflavor oil/i] },
-]
+// Comma-separated user input → /\b(term1|term2|...)\b/i.
+// User-typed terms get regex-escaped so a stray "." or "(" doesn't blow up.
+function buildPattern(matchTerms: string): RegExp | null {
+  const terms = matchTerms
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  if (terms.length === 0) return null
+  return new RegExp(`\\b(${terms.join('|')})\\b`, 'i')
+}
 
-export function detectAllergens(
+function normalizeSeverity(s: string): AllergenSeverity {
+  return s === 'high' ? 'high' : 'normal'
+}
+
+export async function detectAllergens(
   ...sources: (string | null | undefined)[]
-): string[] {
+): Promise<AllergenMatch[]> {
   const text = sources.filter((s): s is string => !!s).join(' ')
   if (!text) return []
-  return ALLERGEN_PILLS.filter((p) =>
-    p.patterns.some((re) => re.test(text)),
-  ).map((p) => p.label)
+
+  const allergens = await prisma.sM_Allergen.findMany({
+    where: { isActive: true },
+    orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
+    select: { label: true, matchTerms: true, severity: true },
+  })
+
+  const hits: AllergenMatch[] = []
+  for (const a of allergens) {
+    const pat = buildPattern(a.matchTerms)
+    if (pat && pat.test(text)) {
+      hits.push({ label: a.label, severity: normalizeSeverity(a.severity) })
+    }
+  }
+  return hits
 }

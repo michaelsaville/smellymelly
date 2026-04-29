@@ -79,7 +79,7 @@ export default async function ProductPage({
   const baseIngredients = product.category?.baseIngredients?.trim() ?? ''
   const extraIngredients = product.ingredients?.trim() ?? ''
   const disclaimer = settings?.productDisclaimer?.trim() ?? ''
-  const allergens = detectAllergens(baseIngredients, extraIngredients)
+  const allergens = await detectAllergens(baseIngredients, extraIngredients)
   const showDisclosure =
     baseIngredients.length > 0 ||
     extraIngredients.length > 0 ||
@@ -209,15 +209,21 @@ export default async function ProductPage({
                   </h2>
                   {allergens.length > 0 && (
                     <div className="mb-3 flex flex-wrap gap-1.5">
-                      {allergens.map((a) => (
-                        <span
-                          key={a}
-                          className="inline-flex items-center rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900"
-                          title={`This product contains ${a.toLowerCase()}.`}
-                        >
-                          Contains {a}
-                        </span>
-                      ))}
+                      {allergens.map((a) => {
+                        const tone =
+                          a.severity === 'high'
+                            ? 'border-red-300 bg-red-100 text-red-900'
+                            : 'border-amber-300 bg-amber-100 text-amber-900'
+                        return (
+                          <span
+                            key={a.label}
+                            className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${tone}`}
+                            title={`This product contains ${a.label.toLowerCase()}.`}
+                          >
+                            Contains {a.label}
+                          </span>
+                        )
+                      })}
                     </div>
                   )}
                   {baseIngredients && (

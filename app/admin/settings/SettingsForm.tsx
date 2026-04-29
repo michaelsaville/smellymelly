@@ -9,6 +9,17 @@ interface CategoryTemplate {
   baseIngredients: string
 }
 
+type AllergenSeverity = 'high' | 'normal'
+
+interface AllergenRow {
+  id: string
+  label: string
+  matchTerms: string
+  severity: AllergenSeverity
+  sortOrder: number
+  isActive: boolean
+}
+
 interface Props {
   logoUrl: string | null
   venmoHandle: string
@@ -17,6 +28,7 @@ interface Props {
   taxRate: number
   productDisclaimer: string
   categories: CategoryTemplate[]
+  allergens: AllergenRow[]
 }
 
 export default function SettingsForm({
@@ -27,6 +39,7 @@ export default function SettingsForm({
   taxRate: initialTaxRate,
   productDisclaimer: initialDisclaimer,
   categories: initialCategories,
+  allergens: initialAllergens,
 }: Props) {
   const router = useRouter()
   const [logoUrl, setLogoUrl] = useState(initialLogoUrl)
@@ -40,6 +53,7 @@ export default function SettingsForm({
   const [taxRatePct, setTaxRatePct] = useState(String((initialTaxRate * 100).toFixed(2)))
   const [productDisclaimer, setProductDisclaimer] = useState(initialDisclaimer)
   const [categories, setCategories] = useState<CategoryTemplate[]>(initialCategories)
+  const [allergens, setAllergens] = useState<AllergenRow[]>(initialAllergens)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
 
@@ -47,6 +61,37 @@ export default function SettingsForm({
     setCategories((prev) =>
       prev.map((c) => (c.id === id ? { ...c, baseIngredients: value } : c)),
     )
+  }
+
+  function updateAllergen<K extends keyof AllergenRow>(
+    id: string,
+    key: K,
+    value: AllergenRow[K],
+  ) {
+    setAllergens((prev) =>
+      prev.map((a) => (a.id === id ? { ...a, [key]: value } : a)),
+    )
+  }
+
+  function addAllergen() {
+    const nextSortOrder =
+      allergens.reduce((max, a) => Math.max(max, a.sortOrder), 0) + 10
+    const tempId = `new_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+    setAllergens((prev) => [
+      ...prev,
+      {
+        id: tempId,
+        label: '',
+        matchTerms: '',
+        severity: 'normal',
+        sortOrder: nextSortOrder,
+        isActive: true,
+      },
+    ])
+  }
+
+  function removeAllergen(id: string) {
+    setAllergens((prev) => prev.filter((a) => a.id !== id))
   }
 
   async function uploadLogo(e: ChangeEvent<HTMLInputElement>) {
@@ -111,6 +156,16 @@ export default function SettingsForm({
             id: c.id,
             baseIngredients: c.baseIngredients.trim(),
           })),
+          allergens: allergens
+            .filter((a) => a.label.trim() && a.matchTerms.trim())
+            .map((a) => ({
+              id: a.id.startsWith('new_') ? null : a.id,
+              label: a.label.trim(),
+              matchTerms: a.matchTerms.trim(),
+              severity: a.severity,
+              sortOrder: a.sortOrder,
+              isActive: a.isActive,
+            })),
         }),
       })
       const data = await res.json()
@@ -313,6 +368,92 @@ export default function SettingsForm({
           placeholder="Handmade in small batches. May contain nuts, shea, beeswax, essential oils…"
           className="input resize-y"
         />
+      </div>
+
+      <div className="card">
+        <h2 className="font-display text-lg font-semibold text-brand-dark mb-1">
+          Allergen pills
+        </h2>
+        <p className="text-xs text-brand-brown/60 mb-4">
+          Each row is a pill that lights up on a product page when its match
+          terms appear in the recipe text. <strong>Match</strong> is one or
+          more comma-separated words (case-insensitive, whole-word only).
+          <strong> High</strong> = red pill, <strong>Normal</strong> = amber.
+          Uncheck Active to hide a pill without deleting it.
+        </p>
+        <div className="space-y-2">
+          <div className="hidden sm:grid grid-cols-12 gap-2 text-[11px] uppercase tracking-wide text-brand-brown/50 px-1">
+            <div className="col-span-3">Label</div>
+            <div className="col-span-5">Match (comma-separated)</div>
+            <div className="col-span-2">Severity</div>
+            <div className="col-span-1 text-center">Active</div>
+            <div className="col-span-1"></div>
+          </div>
+          {allergens.length === 0 && (
+            <p className="text-sm text-brand-brown/60">No allergens yet.</p>
+          )}
+          {allergens.map((a) => (
+            <div
+              key={a.id}
+              className="grid grid-cols-12 gap-2 items-center"
+            >
+              <input
+                type="text"
+                value={a.label}
+                onChange={(e) => updateAllergen(a.id, 'label', e.target.value)}
+                placeholder="Shea"
+                className="input col-span-12 sm:col-span-3"
+              />
+              <input
+                type="text"
+                value={a.matchTerms}
+                onChange={(e) =>
+                  updateAllergen(a.id, 'matchTerms', e.target.value)
+                }
+                placeholder="shea, shea butter"
+                className="input col-span-12 sm:col-span-5"
+              />
+              <select
+                value={a.severity}
+                onChange={(e) =>
+                  updateAllergen(
+                    a.id,
+                    'severity',
+                    e.target.value as AllergenSeverity,
+                  )
+                }
+                className="input col-span-6 sm:col-span-2"
+              >
+                <option value="normal">Normal</option>
+                <option value="high">High</option>
+              </select>
+              <label className="col-span-3 sm:col-span-1 flex items-center justify-center text-xs text-brand-brown/70">
+                <input
+                  type="checkbox"
+                  checked={a.isActive}
+                  onChange={(e) =>
+                    updateAllergen(a.id, 'isActive', e.target.checked)
+                  }
+                  className="h-4 w-4"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => removeAllergen(a.id)}
+                className="col-span-3 sm:col-span-1 text-xs text-red-700 hover:text-red-900"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={addAllergen}
+          className="btn-secondary text-sm mt-4"
+        >
+          + Add allergen
+        </button>
       </div>
 
       <div className="flex items-center justify-between">

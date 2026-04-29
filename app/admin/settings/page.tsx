@@ -7,11 +7,22 @@ export const dynamic = 'force-dynamic'
 export default async function SettingsPage() {
   await requireAdmin()
 
-  const [settings, categories] = await Promise.all([
+  const [settings, categories, allergens] = await Promise.all([
     prisma.sM_Settings.findFirst({ where: { id: 'singleton' } }),
     prisma.sM_Category.findMany({
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       select: { id: true, name: true, baseIngredients: true },
+    }),
+    prisma.sM_Allergen.findMany({
+      orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }],
+      select: {
+        id: true,
+        label: true,
+        matchTerms: true,
+        severity: true,
+        sortOrder: true,
+        isActive: true,
+      },
     }),
   ])
 
@@ -36,6 +47,14 @@ export default async function SettingsPage() {
           id: c.id,
           name: c.name,
           baseIngredients: c.baseIngredients ?? '',
+        }))}
+        allergens={allergens.map((a) => ({
+          id: a.id,
+          label: a.label,
+          matchTerms: a.matchTerms,
+          severity: a.severity === 'high' ? 'high' : 'normal',
+          sortOrder: a.sortOrder,
+          isActive: a.isActive,
         }))}
       />
     </div>

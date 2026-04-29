@@ -12,6 +12,15 @@ interface CategoryUpdate {
   baseIngredients: string
 }
 
+interface AllergenInput {
+  id: string | null
+  label: string
+  matchTerms: string
+  severity: string
+  sortOrder: number
+  isActive: boolean
+}
+
 interface Body {
   venmoHandle?: string
   cashAppTag?: string
@@ -19,6 +28,7 @@ interface Body {
   taxRate?: number
   productDisclaimer?: string
   categories?: CategoryUpdate[]
+  allergens?: AllergenInput[]
 }
 
 export async function POST(req: NextRequest) {
@@ -62,9 +72,45 @@ export async function POST(req: NextRequest) {
       )
     : []
 
-  if (Object.keys(data).length === 0 && categoryUpdates.length === 0) {
+  const allergensProvided = Array.isArray(body.allergens)
+  const allergenInputs: AllergenInput[] = allergensProvided
+    ? body
+        .allergens!.filter(
+          (a): a is AllergenInput =>
+            !!a &&
+            typeof a.label === 'string' &&
+            typeof a.matchTerms === 'string',
+        )
+        .filter((a) => a.label.trim() && a.matchTerms.trim())
+        .map((a) => ({
+          id: typeof a.id === 'string' ? a.id : null,
+          label: a.label.trim(),
+          matchTerms: a.matchTerms.trim(),
+          severity: a.severity === 'high' ? 'high' : 'normal',
+          sortOrder: typeof a.sortOrder === 'number' ? a.sortOrder : 0,
+          isActive: a.isActive !== false,
+        }))
+    : []
+
+  if (
+    Object.keys(data).length === 0 &&
+    categoryUpdates.length === 0 &&
+    !allergensProvided
+  ) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
   }
+
+  // Replace strategy for allergens: any existing row whose ID isn't in the
+  // incoming list gets deleted; the rest are upserted by ID.
+  const existingAllergens = allergensProvided
+    ? await prisma.sM_Allergen.findMany({ select: { id: true } })
+    : []
+  const incomingIds = new Set(
+    allergenInputs.map((a) => a.id).filter((id): id is string => !!id),
+  )
+  const idsToDelete = existingAllergens
+    .map((a) => a.id)
+    .filter((id) => !incomingIds.has(id))
 
   await prisma.$transaction([
     ...(Object.keys(data).length > 0
@@ -81,6 +127,35 @@ export async function POST(req: NextRequest) {
         where: { id: c.id },
         data: { baseIngredients: c.baseIngredients || null },
       }),
+    ),
+    ...(idsToDelete.length > 0
+      ? [
+          prisma.sM_Allergen.deleteMany({
+            where: { id: { in: idsToDelete } },
+          }),
+        ]
+      : []),
+    ...allergenInputs.map((a) =>
+      a.id
+        ? prisma.sM_Allergen.update({
+            where: { id: a.id },
+            data: {
+              label: a.label,
+              matchTerms: a.matchTerms,
+              severity: a.severity,
+              sortOrder: a.sortOrder,
+              isActive: a.isActive,
+            },
+          })
+        : prisma.sM_Allergen.create({
+            data: {
+              label: a.label,
+              matchTerms: a.matchTerms,
+              severity: a.severity,
+              sortOrder: a.sortOrder,
+              isActive: a.isActive,
+            },
+          }),
     ),
   ])
   return NextResponse.json({ ok: true })
