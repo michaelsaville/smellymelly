@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { prisma } from '@/app/lib/prisma'
+import { detectAllergens } from '@/app/lib/allergens'
 import StoreLayout from '@/app/components/StoreLayout'
 import AddToCart from './AddToCart'
 
@@ -78,6 +79,7 @@ export default async function ProductPage({
   const baseIngredients = product.category?.baseIngredients?.trim() ?? ''
   const extraIngredients = product.ingredients?.trim() ?? ''
   const disclaimer = settings?.productDisclaimer?.trim() ?? ''
+  const allergens = detectAllergens(baseIngredients, extraIngredients)
   const showDisclosure =
     baseIngredients.length > 0 ||
     extraIngredients.length > 0 ||
@@ -205,6 +207,19 @@ export default async function ProductPage({
                   <h2 className="font-display text-base font-semibold text-brand-dark mb-2">
                     Ingredients & disclosure
                   </h2>
+                  {allergens.length > 0 && (
+                    <div className="mb-3 flex flex-wrap gap-1.5">
+                      {allergens.map((a) => (
+                        <span
+                          key={a}
+                          className="inline-flex items-center rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900"
+                          title={`This product contains ${a.toLowerCase()}.`}
+                        >
+                          Contains {a}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {baseIngredients && (
                     <p className="leading-relaxed">{baseIngredients}</p>
                   )}
