@@ -144,12 +144,8 @@ body.sm-print .sm-menu-wrap {
   margin: 0.4in;
 }
 @media print {
-  /* Force landscape + 0.5" margins so the on-paper output matches
-     the admin layout preview at /admin/menu/layout. */
-  @page {
-    size: letter landscape;
-    margin: 0.5in;
-  }
+  /* Note: @page size + margin live in PrintShell.tsx so the
+     orientation toggle in /admin/menu/layout drives them. */
   body.sm-print {
     background: #fff;
   }

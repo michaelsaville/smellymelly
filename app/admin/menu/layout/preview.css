@@ -69,6 +69,34 @@
   text-transform: uppercase;
 }
 
+.layout-preview-orientation {
+  display: inline-flex;
+  border: 1px solid #e7c8d6;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+.layout-preview-orientation button {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.78rem;
+  padding: 0.4rem 0.75rem;
+  background: #fff;
+  color: #6a3a4a;
+  border: none;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+}
+.layout-preview-orientation button + button {
+  border-left: 1px solid #e7c8d6;
+}
+.layout-preview-orientation button.active {
+  background: #c8557a;
+  color: #fff;
+}
+.layout-preview-orientation button:hover:not(.active) {
+  background: #fff7fa;
+}
+
 .layout-preview-actions {
   display: flex;
   gap: 0.4rem;
@@ -191,6 +219,24 @@
 .layout-preview-rail-item .rail-meta {
   font-size: 0.7rem;
   color: #8a5a6a;
+}
+.layout-preview-rail-item .rail-fullwidth {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.25rem;
+  font-size: 0.7rem;
+  color: #8a5a6a;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  user-select: none;
+}
+.layout-preview-rail-item .rail-fullwidth input[type='checkbox'] {
+  accent-color: #c8557a;
+  cursor: pointer;
+}
+.layout-preview-rail-item .rail-fullwidth:hover {
+  color: #c8557a;
 }
 .layout-preview-rail-item .rail-arrows {
   display: flex;

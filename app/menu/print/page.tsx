@@ -1,22 +1,16 @@
+import type { Metadata } from 'next'
 import { prisma } from '@/app/lib/prisma'
-import { LayoutPreview } from './LayoutPreview'
-import '@/app/menu/menu.css'
-import './preview.css'
+import { MenuCards } from '../MenuCards'
+import { PrintShell } from './PrintShell'
+import '../menu.css'
 
 export const dynamic = 'force-dynamic'
 
-/**
- * Admin layout-preview for the printed scent menu. Mirrors what
- * /menu/print actually renders (US Letter landscape, 0.5" margins),
- * shows where page breaks fall, and lets Mel drag whole groups to
- * reorder until the breaks land cleanly. Saves back to
- * SM_MenuGroup.sortOrder via the existing PATCH route.
- *
- * Only active groups are previewed — matches /menu/print's filter.
- * Inactive groups stay visible/editable on /admin/menu (the scent
- * board) but don't affect pagination here.
- */
-export default async function MenuLayoutPage() {
+export const metadata: Metadata = {
+  title: 'Print Menu',
+}
+
+export default async function MenuPrintPage() {
   const [groups, settings] = await Promise.all([
     prisma.sM_MenuGroup.findMany({
       where: { isActive: true },
@@ -55,12 +49,14 @@ export default async function MenuLayoutPage() {
     settings?.menuOrientation === 'PORTRAIT' ? 'PORTRAIT' : 'LANDSCAPE'
 
   return (
-    <LayoutPreview
-      groups={groupData}
-      storeName={settings?.businessName || "Smelly Melly's"}
-      phone={settings?.businessPhone}
-      email={settings?.businessEmail}
-      initialOrientation={orientation}
-    />
+    <PrintShell orientation={orientation}>
+      <MenuCards
+        groups={groupData}
+        storeName={settings?.businessName || "Smelly Melly's"}
+        phone={settings?.businessPhone}
+        email={settings?.businessEmail}
+        social="@SmellyMellys"
+      />
+    </PrintShell>
   )
 }

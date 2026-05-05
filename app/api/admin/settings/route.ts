@@ -27,6 +27,7 @@ interface Body {
   paymentInstructions?: string
   taxRate?: number
   productDisclaimer?: string
+  menuOrientation?: string
   categories?: CategoryUpdate[]
   allergens?: AllergenInput[]
 }
@@ -43,6 +44,7 @@ export async function POST(req: NextRequest) {
     paymentInstructions?: string
     taxRate?: number
     productDisclaimer?: string
+    menuOrientation?: string
   } = {}
 
   if (typeof body.venmoHandle === 'string') data.venmoHandle = body.venmoHandle
@@ -61,6 +63,16 @@ export async function POST(req: NextRequest) {
   }
   if (typeof body.productDisclaimer === 'string') {
     data.productDisclaimer = body.productDisclaimer
+  }
+  if (typeof body.menuOrientation === 'string') {
+    const v = body.menuOrientation.toUpperCase()
+    if (v !== 'LANDSCAPE' && v !== 'PORTRAIT') {
+      return NextResponse.json(
+        { error: 'menuOrientation must be LANDSCAPE or PORTRAIT' },
+        { status: 400 },
+      )
+    }
+    data.menuOrientation = v
   }
 
   const categoryUpdates = Array.isArray(body.categories)

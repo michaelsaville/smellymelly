@@ -26,6 +26,12 @@ model SM_Category {
   // still add its own one-off extras via SM_Product.ingredients.
   baseIngredients String?
 
+  // Visual icon for the admin tile + public /shop pill. Either a single
+  // emoji char OR a URL to an uploaded image. When both are set, the
+  // image wins.
+  iconEmoji    String?
+  iconImageUrl String?
+
   products SM_Product[]
 
   @@map("sm_categories")
@@ -121,7 +127,55 @@ model SM_Scent {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  menuGroupLinks SM_MenuGroupScent[]
+
   @@map("sm_scents")
+  @@schema("smellymelly")
+}
+
+// ─── PUBLIC MENU (curated scent board) ────────────────────────────────────
+// Display layer for /menu and /menu/print. Independent from SM_Category
+// because category taxonomy is coarser (e.g. "Bath & Body" covers both
+// Body Scrub and Body Butter, but the menu lists them as separate cards).
+// A scent can appear in multiple groups via the join table.
+
+model SM_MenuGroup {
+  id           String   @id @default(cuid())
+  // Internal name (admin board column header).
+  name         String
+  // Public-facing card title. Falls back to name when null.
+  displayLabel String?
+  // e.g. "4 oz · $10–$12" — free-form, shown in the card head.
+  priceLabel   String?
+  // Color-theme key matched in /menu CSS: scrub, butter, beard, lip, scrub2.
+  theme        String   @default("scrub")
+  sortOrder    Int      @default(0)
+  isActive     Boolean  @default(true)
+  /// When true, this card spans both columns of the 2-up grid in the
+  /// rendered menu. Used to be implicit (first card always wide); now
+  /// explicit per-group so Mel can pick any card to be wide.
+  fullWidth    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  scentLinks SM_MenuGroupScent[]
+
+  @@map("sm_menu_groups")
+  @@schema("smellymelly")
+}
+
+model SM_MenuGroupScent {
+  id        String       @id @default(cuid())
+  groupId   String
+  group     SM_MenuGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  scentId   String
+  scent     SM_Scent     @relation(fields: [scentId], references: [id], onDelete: Cascade)
+  sortOrder Int          @default(0)
+  createdAt DateTime     @default(now())
+
+  @@unique([groupId, scentId])
+  @@index([groupId, sortOrder])
+  @@map("sm_menu_group_scents")
   @@schema("smellymelly")
 }
 
@@ -518,6 +572,26 @@ model SM_Settings {
   // per product type) and SM_Product.ingredients (per-product extras).
   productDisclaimer String @default("Handmade in small batches in Cumberland, MD. May contain nuts, shea, beeswax, essential oils, or fragrance oils. Patch-test on a small area before full use and discontinue if irritation occurs. For external use only — keep out of reach of children. Not evaluated by the FDA; not intended to diagnose, treat, cure, or prevent any disease.")
 
+  /// Page orientation for the printed scent menu — chosen in the
+  /// admin layout preview. "LANDSCAPE" or "PORTRAIT". Drives the
+  /// @page size CSS that PrintShell injects, and the page-frame
+  /// dimensions in the layout preview.
+  menuOrientation String @default("LANDSCAPE")
+
   @@map("sm_settings")
+  @@schema("smellymelly")
+}
+
+// Rolling sample of Mel's own user messages to /admin/ai. Used to nudge
+// Claude on her phrasing style ("she calls 4oz tubs 'big tubs'", "she
+// usually skips the dollar sign"). Capped at ~30 rows by the route handler;
+// safe to wipe wholesale via /admin/ai/memory.
+model SM_AIMessageSample {
+  id        String   @id @default(cuid())
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("sm_ai_message_samples")
   @@schema("smellymelly")
 }
