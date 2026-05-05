@@ -1,0 +1,274 @@
+/* Smelly Melly menu layout preview — admin tool only. The right pane
+   shows simulated landscape pages; the left rail is a drag list. */
+
+.layout-preview-root {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.layout-preview-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+.layout-preview-header h1 {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.5rem;
+  color: #2a1018;
+  margin: 0.25rem 0 0;
+}
+.layout-preview-back {
+  font-size: 0.8rem;
+  color: #8a5a6a;
+  text-decoration: none;
+}
+.layout-preview-back:hover {
+  text-decoration: underline;
+}
+.layout-preview-subtitle {
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+  color: #6b3a4c;
+  max-width: 520px;
+}
+
+.layout-preview-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.4rem;
+}
+.layout-preview-pagecount {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.4rem 0.85rem;
+  background: #fff;
+  border: 1px solid #e7c8d6;
+  border-radius: 10px;
+}
+.layout-preview-pagecount .big {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.7rem;
+  color: #c8557a;
+  font-weight: 600;
+}
+.layout-preview-pagecount .label {
+  font-size: 0.8rem;
+  color: #8a5a6a;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.layout-preview-slack {
+  font-size: 0.7rem;
+  color: #8a5a6a;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.layout-preview-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.2rem;
+}
+.layout-preview-actions .btn-primary,
+.layout-preview-actions .btn-ghost {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.82rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  text-decoration: none;
+}
+.layout-preview-actions .btn-primary {
+  background: #c8557a;
+  color: #fff;
+  border-color: #c8557a;
+}
+.layout-preview-actions .btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.layout-preview-actions .btn-ghost {
+  background: #fff;
+  color: #6a3a4a;
+  border-color: #e7c8d6;
+}
+.layout-preview-actions .btn-ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.layout-preview-error {
+  font-size: 0.78rem;
+  color: #b13838;
+}
+.layout-preview-saved {
+  font-size: 0.75rem;
+  color: #4a7a4a;
+}
+
+/* ── 2-pane grid ───────────────────────────────────────────────── */
+.layout-preview-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 1.25rem;
+  align-items: flex-start;
+}
+@media (max-width: 900px) {
+  .layout-preview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Drag rail ─────────────────────────────────────────────────── */
+.layout-preview-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  background: #fff;
+  border: 1px solid #e7c8d6;
+  border-radius: 10px;
+  padding: 0.75rem;
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 8rem);
+  overflow-y: auto;
+}
+.layout-preview-rail-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8a5a6a;
+  margin-bottom: 0.25rem;
+}
+.layout-preview-rail-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  background: #fff7fa;
+  border: 1px solid #f1d9e3;
+  border-radius: 8px;
+  cursor: grab;
+  user-select: none;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, border-color 0.08s ease;
+}
+.layout-preview-rail-item:hover {
+  border-color: #c8557a;
+}
+.layout-preview-rail-item.dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+.layout-preview-rail-item.over {
+  border-color: #c8557a;
+  box-shadow: 0 0 0 2px rgba(200, 85, 122, 0.18);
+  transform: translateY(-1px);
+}
+.layout-preview-rail-item .grip {
+  font-size: 0.85rem;
+  color: #c8849a;
+  letter-spacing: -1px;
+}
+.layout-preview-rail-item .rail-text {
+  flex: 1;
+  min-width: 0;
+}
+.layout-preview-rail-item .rail-name {
+  font-family: 'Playfair Display', serif;
+  font-size: 0.95rem;
+  color: #2a1018;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.layout-preview-rail-item .rail-meta {
+  font-size: 0.7rem;
+  color: #8a5a6a;
+}
+.layout-preview-rail-item .rail-arrows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.layout-preview-rail-item .rail-arrows button {
+  width: 22px;
+  height: 16px;
+  border: 1px solid #e7c8d6;
+  background: #fff;
+  color: #8a5a6a;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.6rem;
+  line-height: 1;
+  padding: 0;
+}
+.layout-preview-rail-item .rail-arrows button:hover:not(:disabled) {
+  background: #c8557a;
+  color: #fff;
+  border-color: #c8557a;
+}
+.layout-preview-rail-item .rail-arrows button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* ── Stage / pages ─────────────────────────────────────────────── */
+.layout-preview-stage {
+  position: relative;
+}
+.layout-preview-stage-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.page-frame {
+  position: relative;
+  background: #fff;
+  border: 1px solid #d8d8d8;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.page-frame-inner {
+  transform-origin: top left;
+}
+.page-frame-content {
+  /* matches the 0.5" margins on the simulated paper */
+  background: #fff;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+.page-frame-label {
+  position: absolute;
+  bottom: 4px;
+  right: 8px;
+  font-size: 0.65rem;
+  color: #8a5a6a;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: 'DM Sans', sans-serif;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+
+.layout-preview-measure {
+  /* Authoritative measurement copy of the menu, kept off-screen but
+     in the document flow so layout actually computes. width matches
+     the printable area so MenuCards' grid behaves identically to
+     what the print page will produce. */
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  top: 0;
+  left: 0;
+  z-index: -1;
+}

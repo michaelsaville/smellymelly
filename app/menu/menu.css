@@ -1,0 +1,165 @@
+/* Smelly Melly scent menu — v4 aesthetic, themed via CSS vars set per card. */
+
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap');
+
+.sm-menu-wrap {
+  font-family: 'DM Sans', sans-serif;
+  background: #1a0a12;
+  padding: 2.5rem 2rem;
+  border-radius: 16px;
+  color: #f2c4d8;
+}
+
+.sm-menu-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+.sm-menu-logo {
+  font-family: 'Playfair Display', serif;
+  font-size: 2.2rem;
+  color: #f2c4d8;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+}
+.sm-menu-tagline {
+  font-size: 0.72rem;
+  color: #c8849a;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin-top: 0.3rem;
+}
+.sm-menu-divider {
+  width: 60px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #c8557a, transparent);
+  margin: 1rem auto;
+}
+.sm-menu-contact {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+.sm-menu-contact-item {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.05rem;
+  color: #f2c4d8;
+  letter-spacing: 0.05em;
+}
+.sm-menu-contact-sep {
+  color: #4a2030;
+  font-size: 1rem;
+}
+
+.sm-menu-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+@media (max-width: 540px) {
+  .sm-menu-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.sm-menu-card-wide {
+  grid-column: 1 / -1;
+}
+
+.sm-menu-card {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+.sm-menu-card-head {
+  padding: 0.65rem 1rem;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background: var(--head);
+}
+.sm-menu-card-name {
+  font-family: 'Playfair Display', serif;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--name);
+}
+.sm-menu-card-detail {
+  font-size: 0.68rem;
+  opacity: 0.85;
+  letter-spacing: 0.05em;
+  color: var(--detail);
+  white-space: nowrap;
+}
+.sm-menu-card-body {
+  padding: 0.75rem 1rem 0.85rem;
+  background: var(--body);
+}
+.sm-menu-scent-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.sm-menu-scent {
+  font-size: 0.67rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 20px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  background: var(--pill-bg);
+  color: var(--pill-text);
+}
+.sm-menu-empty {
+  font-size: 0.7rem;
+  color: var(--detail);
+  opacity: 0.6;
+  margin: 0;
+}
+
+.sm-menu-footer {
+  text-align: center;
+  margin-top: 1.8rem;
+  font-size: 0.68rem;
+  color: #6a3a4a;
+  letter-spacing: 0.08em;
+}
+.sm-menu-footer span {
+  color: #c8557a;
+}
+
+/* Print mode — paper-friendly. The shell page sets body.sm-print and we
+   tighten the layout, drop external chrome, and force a white margin around
+   the dark menu so toner doesn't bleed to the page edge. */
+body.sm-print {
+  margin: 0;
+  background: #fff;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+body.sm-print .sm-menu-wrap {
+  border-radius: 0;
+  margin: 0.4in;
+}
+@media print {
+  /* Force landscape + 0.5" margins so the on-paper output matches
+     the admin layout preview at /admin/menu/layout. */
+  @page {
+    size: letter landscape;
+    margin: 0.5in;
+  }
+  body.sm-print {
+    background: #fff;
+  }
+  body.sm-print .sm-menu-wrap {
+    margin: 0;
+    /* let the wrap flow + paginate naturally; breaks should fall
+       between cards, not inside one */
+  }
+  body.sm-print .sm-menu-card {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}
