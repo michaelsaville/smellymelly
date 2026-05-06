@@ -38,6 +38,7 @@ function CartBadge() {
 
 const navLinks = [
   { href: '/shop', label: 'Shop' },
+  { href: '/menu', label: 'Scent Menu' },
   { href: '/about', label: 'About' },
   { href: '/contact', label: 'Contact' },
 ]

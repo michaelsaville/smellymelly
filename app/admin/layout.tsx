@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { href: '/admin/products', label: 'Products' },
   { href: '/admin/categories', label: 'Categories' },
   { href: '/admin/scents', label: 'Scents' },
+  { href: '/admin/menu', label: 'Menu' },
   { href: '/admin/orders', label: 'Orders' },
   { href: '/admin/campaigns', label: 'Campaigns' },
   { href: '/admin/order-forms', label: 'Paper Forms' },
