@@ -99,8 +99,8 @@ export default async function ScentSheetAdminPage() {
       </div>
 
       {categories.length > 0 && (
-        <section className="mt-6 overflow-hidden rounded-lg border border-brand-brown/15 bg-white">
-          <header className="flex items-end justify-between gap-3 border-b border-brand-brown/10 bg-brand-cream/50 px-4 py-2">
+        <section className="relative mt-6 rounded-lg border border-brand-brown/15 bg-white">
+          <header className="flex items-end justify-between gap-3 rounded-t-lg border-b border-brand-brown/10 bg-brand-cream/50 px-4 py-2">
             <div>
               <h2 className="text-sm font-semibold text-brand-dark">
                 Category icons
