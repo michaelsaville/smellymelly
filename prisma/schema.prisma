@@ -32,7 +32,8 @@ model SM_Category {
   iconEmoji    String?
   iconImageUrl String?
 
-  products SM_Product[]
+  products   SM_Product[]
+  scentLinks SM_ScentCategory[]
 
   @@map("sm_categories")
   @@schema("smellymelly")
@@ -128,8 +129,29 @@ model SM_Scent {
   updatedAt DateTime @updatedAt
 
   menuGroupLinks SM_MenuGroupScent[]
+  categoryLinks  SM_ScentCategory[]
 
   @@map("sm_scents")
+  @@schema("smellymelly")
+}
+
+/// Independent of menu-group membership: marks which categories a
+/// scent is "available for" on the printable scent sheet. Toggling a
+/// link here does NOT add/remove the scent from the menu groups —
+/// those still live in SM_MenuGroupScent. Two parallel datasets by
+/// design (per Mel 2026-05-06).
+model SM_ScentCategory {
+  id         String      @id @default(cuid())
+  scentId    String
+  categoryId String
+  scent      SM_Scent    @relation(fields: [scentId], references: [id], onDelete: Cascade)
+  category   SM_Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  createdAt  DateTime    @default(now())
+
+  @@unique([scentId, categoryId])
+  @@index([scentId])
+  @@index([categoryId])
+  @@map("sm_scent_categories")
   @@schema("smellymelly")
 }
 

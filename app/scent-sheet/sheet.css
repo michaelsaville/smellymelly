@@ -1,0 +1,171 @@
+/* Smelly Melly Scent Sheet — paper-friendly two-column reference of
+   every active scent + the icons of categories it's available for.
+   Same font stack / palette as menu.css but laid out as a list. */
+
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&display=swap');
+
+.sm-sheet-wrap {
+  font-family: 'DM Sans', sans-serif;
+  background: #fff;
+  padding: 1rem 1.5rem 1.25rem;
+  border-radius: 16px;
+  color: #2a1018;
+  border: 1px solid #f1d9e3;
+}
+.sm-sheet-header {
+  text-align: center;
+  margin-bottom: 0.75rem;
+}
+.sm-sheet-logo {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.6rem;
+  color: #2a1018;
+  letter-spacing: 0.02em;
+  line-height: 1.05;
+}
+.sm-sheet-tagline {
+  font-size: 0.65rem;
+  color: #c8557a;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin-top: 0.15rem;
+}
+.sm-sheet-divider {
+  width: 50px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #c8557a, transparent);
+  margin: 0.45rem auto;
+}
+.sm-sheet-contact {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  font-family: 'Playfair Display', serif;
+  font-size: 0.85rem;
+  color: #6b3a4c;
+  letter-spacing: 0.04em;
+}
+.sm-sheet-contact .sep {
+  color: #d8b8c4;
+  font-size: 0.85rem;
+}
+
+/* Compact icon legend so the reader knows what each icon means. */
+.sm-sheet-key {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  margin-top: 0.55rem;
+  padding-top: 0.45rem;
+  border-top: 1px dashed #f1d9e3;
+  font-size: 0.65rem;
+  color: #8a5a6a;
+  letter-spacing: 0.04em;
+}
+.sm-sheet-key-label {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #c8557a;
+  font-size: 0.55rem;
+}
+.sm-sheet-key-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.sm-sheet-key-item .ico {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+.sm-sheet-key-item img {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+}
+
+/* Two-column layout via CSS columns — same masonry trick the menu
+   uses now, gives tightly packed rows without grid stretching. */
+.sm-sheet-list {
+  column-count: 2;
+  column-gap: 1.25rem;
+}
+@media (max-width: 540px) {
+  .sm-sheet-list {
+    column-count: 1;
+  }
+}
+.sm-sheet-row {
+  break-inside: avoid;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.18rem 0;
+  border-bottom: 1px dotted #f1d9e3;
+}
+.sm-sheet-name {
+  font-family: 'Playfair Display', serif;
+  font-size: 0.78rem;
+  color: #2a1018;
+  letter-spacing: 0.01em;
+}
+.sm-sheet-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+.sm-sheet-icons .ico {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+.sm-sheet-icons img {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+}
+.sm-sheet-none {
+  font-size: 0.7rem;
+  color: #d8b8c4;
+}
+.sm-sheet-empty {
+  text-align: center;
+  font-size: 0.85rem;
+  color: #8a5a6a;
+  padding: 1rem;
+}
+.sm-sheet-footer {
+  text-align: center;
+  margin-top: 0.7rem;
+  padding-top: 0.45rem;
+  border-top: 1px dashed #f1d9e3;
+  font-size: 0.62rem;
+  color: #6b3a4c;
+  letter-spacing: 0.04em;
+}
+.sm-sheet-footer span {
+  font-family: 'Playfair Display', serif;
+  font-size: 0.85rem;
+  color: #c8557a;
+}
+
+/* Print rules — @page size + margin live in the sheet's PrintShell
+   so it's symmetric with the menu's PrintShell. */
+@media print {
+  body.sm-sheet-print {
+    background: #fff;
+  }
+  body.sm-sheet-print .sm-sheet-wrap {
+    margin: 0;
+    border: none;
+    padding: 0;
+  }
+  .sm-sheet-row {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

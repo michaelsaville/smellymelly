@@ -10,12 +10,23 @@ export default async function ScentsPage() {
 
   return (
     <div>
-      <h1 className="font-display text-2xl font-bold text-brand-dark">
-        Scents
-      </h1>
-      <p className="mt-1 text-sm text-brand-brown/60">
-        Manage your scent options. When creating a product, you can generate one variant per scent automatically.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-bold text-brand-dark">
+            Scents
+          </h1>
+          <p className="mt-1 text-sm text-brand-brown/60">
+            Manage your scent options. When creating a product, you can
+            generate one variant per scent automatically.
+          </p>
+        </div>
+        <a
+          href="/admin/scents/sheet"
+          className="btn-primary whitespace-nowrap"
+        >
+          Scent sheet →
+        </a>
+      </div>
       <ScentManager initialScents={scents} />
     </div>
   )
