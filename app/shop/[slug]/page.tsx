@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { prisma } from '@/app/lib/prisma'
 import { detectAllergens } from '@/app/lib/allergens'
+import { resolveScents, parseVariantScent } from '@/app/lib/scent-resolver'
 import StoreLayout from '@/app/components/StoreLayout'
 import AddToCart from './AddToCart'
 
@@ -89,6 +90,16 @@ export default async function ProductPage({
   const minPrice = prices.length > 0 ? Math.min(...prices) : null
   const maxPrice = prices.length > 0 ? Math.max(...prices) : null
   const mainImage = product.images[0] ?? null
+
+  const variantScentStrings = product.variants.map((v) => parseVariantScent(v.name))
+  const scentMap = await resolveScents(variantScentStrings)
+  const variantScentDescriptions: Record<string, string | null> = {}
+  for (const v of product.variants) {
+    const prefix = parseVariantScent(v.name)
+    const r = scentMap.get(prefix.toLowerCase())
+    variantScentDescriptions[v.id] =
+      r && r.source !== 'none' ? r.description ?? null : null
+  }
 
   return (
     <StoreLayout>
@@ -255,6 +266,7 @@ export default async function ProductPage({
                   name: v.name,
                   priceCents: v.priceCents,
                   stockQuantity: v.stockQuantity,
+                  scentDescription: variantScentDescriptions[v.id] ?? null,
                 }))}
                 productName={product.name}
                 productSlug={product.slug}

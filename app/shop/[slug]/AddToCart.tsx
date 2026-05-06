@@ -7,6 +7,7 @@ interface Variant {
   name: string
   priceCents: number
   stockQuantity: number
+  scentDescription: string | null
 }
 
 interface AddToCartProps {
@@ -99,6 +100,16 @@ export default function AddToCart({ variants, productName, productSlug, imageUrl
       : null
   const inStock = selected ? selected.stockQuantity > 0 : false
   const maxQty = selected ? selected.stockQuantity : 0
+
+  // Description for the currently-selected scent. All variants of the same
+  // scent share the same description, so any matching variant works as the
+  // source — selected is preferred so it tracks the picker exactly.
+  const scentDescription =
+    scent !== null
+      ? selected?.scentDescription ??
+        parsed.find((p) => p.scent === scent && p.scentDescription)?.scentDescription ??
+        null
+      : null
 
   function handleAdd() {
     if (!selected || !inStock) return
@@ -234,7 +245,17 @@ export default function AddToCart({ variants, productName, productSlug, imageUrl
           <span className="inline-flex items-center rounded-full border border-brand-warm/60 bg-brand-peach/20 px-3 py-1.5 text-sm font-medium text-brand-brown">
             {scentsForSize[0].scent}
           </span>
+          {scentsForSize[0].scentDescription && (
+            <ScentDescriptionPanel
+              scent={scentsForSize[0].scent}
+              description={scentsForSize[0].scentDescription}
+            />
+          )}
         </div>
+      )}
+
+      {hasScentChoice && scent && scentDescription && (
+        <ScentDescriptionPanel scent={scent} description={scentDescription} />
       )}
 
       {selected && inStock ? (
@@ -292,6 +313,23 @@ export default function AddToCart({ variants, productName, productSlug, imageUrl
           Select a scent
         </button>
       )}
+    </div>
+  )
+}
+
+function ScentDescriptionPanel({
+  scent,
+  description,
+}: {
+  scent: string
+  description: string
+}) {
+  return (
+    <div className="mt-3 rounded-lg border border-brand-warm/60 bg-brand-cream/40 p-4 text-sm leading-relaxed text-brand-brown/80">
+      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-brand-terra">
+        About {scent}
+      </div>
+      {description}
     </div>
   )
 }

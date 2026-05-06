@@ -22,6 +22,12 @@ export default async function ScentsPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <a
+            href="/admin/scents/variant-map"
+            className="rounded-md border border-brand-warm bg-white px-3 py-1.5 text-sm font-medium text-brand-dark hover:border-brand-terra"
+          >
+            Variant map →
+          </a>
+          <a
             href="/admin/scents/descriptions"
             className="rounded-md border border-brand-warm bg-white px-3 py-1.5 text-sm font-medium text-brand-dark hover:border-brand-terra"
           >

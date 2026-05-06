@@ -141,8 +141,28 @@ model SM_Scent {
 
   menuGroupLinks SM_MenuGroupScent[]
   categoryLinks  SM_ScentCategory[]
+  aliases        SM_ScentAlias[]
 
   @@map("sm_scents")
+  @@schema("smellymelly")
+}
+
+/// Maps a free-text scent string (typically the prefix parsed out of a
+/// product variant name like "Bubblegum" or "chamomile & Lavander") to
+/// a canonical SM_Scent. Used so the customer-facing /shop/[slug] page
+/// can resolve a description for variants whose scent prefix doesn't
+/// exactly match an SM_Scent.name. Curated via /admin/scents/variant-map.
+model SM_ScentAlias {
+  id        String   @id @default(cuid())
+  /// The variant-side scent string. Stored case-insensitively (lowercased on write);
+  /// resolver also lowercases on read. Unique so the same alias can't point to two scents.
+  alias     String   @unique
+  scentId   String
+  scent     SM_Scent @relation(fields: [scentId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([scentId])
+  @@map("sm_scent_aliases")
   @@schema("smellymelly")
 }
 
