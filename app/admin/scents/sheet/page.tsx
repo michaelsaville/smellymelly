@@ -108,13 +108,12 @@ export default async function ScentSheetAdminPage() {
               <p className="text-[11px] text-brand-brown/60">
                 Sheet-specific icons override the website ones (kept
                 separate so the storefront keeps its larger marketing
-                images). Type an emoji or upload a small PNG/SVG.
+                images). Click an icon to pick from the visual library
+                or upload a small PNG/SVG.
               </p>
             </div>
             <div className="hidden text-[10px] uppercase tracking-wider text-brand-brown/50 sm:flex sm:gap-3">
-              <span className="w-9 text-center">Preview</span>
-              <span className="w-14 text-center">Emoji</span>
-              <span>Image</span>
+              <span className="w-9 text-center">Click to edit</span>
               <span className="w-12">Site</span>
             </div>
           </header>
