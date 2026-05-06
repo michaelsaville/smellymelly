@@ -78,12 +78,22 @@ export default async function ShopPage({
               <Link
                 key={cat.id}
                 href={`/shop?category=${cat.slug}`}
-                className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+                className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
                   categorySlug === cat.slug
                     ? 'bg-brand-terra text-white'
                     : 'bg-brand-warm/60 text-brand-brown hover:bg-brand-warm'
                 }`}
               >
+                {cat.iconImageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={cat.iconImageUrl}
+                    alt=""
+                    className="h-4 w-4 rounded object-cover"
+                  />
+                ) : cat.iconEmoji ? (
+                  <span aria-hidden>{cat.iconEmoji}</span>
+                ) : null}
                 {cat.name}
               </Link>
             ))}

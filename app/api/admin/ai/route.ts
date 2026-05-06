@@ -285,6 +285,81 @@ const tools: Anthropic.Tool[] = [
     },
   },
 
+  // ── Category management ───────────────────────────────────────────────
+  {
+    name: 'create_category',
+    description:
+      'Create a new product category (e.g. "Bath & Body", "Lip Care"). If the user does not specify an icon, pick a single emoji that visually represents the category (🛁 for bath, 🕯️ for candles, 💋 for lip, 🪮 for beard, 🌿 for herbal, etc.).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: { type: 'string', description: 'Category name, e.g. "Bath & Body"' },
+        slug: {
+          type: 'string',
+          description:
+            'Optional URL slug. Auto-derived from the name if omitted.',
+        },
+        baseIngredients: {
+          type: 'string',
+          description:
+            'Comma-separated base recipe shared by every product in this category. Optional.',
+        },
+        iconEmoji: {
+          type: 'string',
+          description:
+            'Single emoji char (e.g. "🛁"). When the user does not pick one, choose one that fits the category. Mutually exclusive with iconImageUrl.',
+        },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'update_category',
+    description:
+      'Edit an existing category. Look it up by id or by exact name. Pass only the fields that should change. To change the icon, set iconEmoji to a single emoji char.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        match: {
+          type: 'string',
+          description: 'Category id OR exact name to match.',
+        },
+        name: { type: 'string', description: 'New name' },
+        slug: { type: 'string', description: 'New URL slug' },
+        baseIngredients: {
+          type: 'string',
+          description: 'New base ingredients (empty string clears).',
+        },
+        iconEmoji: {
+          type: 'string',
+          description: 'Single emoji char. Empty string clears the emoji.',
+        },
+        isActive: {
+          type: 'boolean',
+          description: 'true = visible on /shop, false = hidden',
+        },
+      },
+      required: ['match'],
+    },
+  },
+  {
+    name: 'delete_category',
+    description:
+      'Delete a category. If it still has products, supply reassignToName so they get moved into another category first.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        match: { type: 'string', description: 'Category id OR exact name' },
+        reassignToName: {
+          type: 'string',
+          description:
+            'Name of another category to move products into. Required if the deleted category has products.',
+        },
+      },
+      required: ['match'],
+    },
+  },
+
   // ── CRM tools ─────────────────────────────────────────────────────────
   {
     name: 'list_customers',
@@ -943,6 +1018,162 @@ The business is "Smelly Melly" — a small handmade bath & body products busines
       return JSON.stringify({ success: true, deactivated: scent.name })
     }
 
+    case 'create_category': {
+      const name = (input.name || '').trim()
+      if (!name) return JSON.stringify({ error: 'Name is required' })
+      const dup = await prisma.sM_Category.findUnique({ where: { name } })
+      if (dup) {
+        return JSON.stringify({
+          error: `Category "${name}" already exists`,
+          id: dup.id,
+        })
+      }
+      const baseSlug = slugify(input.slug || name)
+      let slug = baseSlug || 'category'
+      let n = 2
+      while (await prisma.sM_Category.findUnique({ where: { slug } })) {
+        slug = `${baseSlug}-${n++}`
+      }
+      const last = await prisma.sM_Category.findFirst({
+        orderBy: { sortOrder: 'desc' },
+        select: { sortOrder: true },
+      })
+      const cat = await prisma.sM_Category.create({
+        data: {
+          name,
+          slug,
+          baseIngredients: input.baseIngredients?.trim() || null,
+          iconEmoji: input.iconEmoji?.trim() || null,
+          sortOrder: (last?.sortOrder ?? -1) + 1,
+        },
+      })
+      return JSON.stringify({
+        success: true,
+        id: cat.id,
+        name: cat.name,
+        slug: cat.slug,
+        iconEmoji: cat.iconEmoji,
+      })
+    }
+
+    case 'update_category': {
+      const match = (input.match || '').trim()
+      if (!match) return JSON.stringify({ error: 'match is required' })
+      const cat = await prisma.sM_Category.findFirst({
+        where: {
+          OR: [
+            { id: match },
+            { name: { equals: match, mode: 'insensitive' } },
+          ],
+        },
+      })
+      if (!cat) {
+        return JSON.stringify({ error: `Category "${match}" not found` })
+      }
+      const data: Record<string, unknown> = {}
+      if (input.name !== undefined) {
+        const newName = String(input.name).trim()
+        if (!newName)
+          return JSON.stringify({ error: 'Name cannot be empty' })
+        const dup = await prisma.sM_Category.findUnique({
+          where: { name: newName },
+        })
+        if (dup && dup.id !== cat.id) {
+          return JSON.stringify({
+            error: `Another category already named "${newName}"`,
+          })
+        }
+        data.name = newName
+      }
+      if (input.slug !== undefined) {
+        const baseSlug = slugify(String(input.slug))
+        let slug = baseSlug || cat.slug
+        let n = 2
+        while (true) {
+          const hit = await prisma.sM_Category.findUnique({ where: { slug } })
+          if (!hit || hit.id === cat.id) break
+          slug = `${baseSlug}-${n++}`
+        }
+        data.slug = slug
+      }
+      if (input.baseIngredients !== undefined) {
+        data.baseIngredients = String(input.baseIngredients).trim() || null
+      }
+      if (input.iconEmoji !== undefined) {
+        data.iconEmoji = String(input.iconEmoji).trim() || null
+      }
+      if (input.isActive !== undefined) data.isActive = !!input.isActive
+
+      const updated = await prisma.sM_Category.update({
+        where: { id: cat.id },
+        data,
+      })
+      return JSON.stringify({
+        success: true,
+        id: updated.id,
+        name: updated.name,
+        slug: updated.slug,
+        iconEmoji: updated.iconEmoji,
+        isActive: updated.isActive,
+      })
+    }
+
+    case 'delete_category': {
+      const match = (input.match || '').trim()
+      if (!match) return JSON.stringify({ error: 'match is required' })
+      const cat = await prisma.sM_Category.findFirst({
+        where: {
+          OR: [
+            { id: match },
+            { name: { equals: match, mode: 'insensitive' } },
+          ],
+        },
+      })
+      if (!cat) {
+        return JSON.stringify({ error: `Category "${match}" not found` })
+      }
+      const productCount = await prisma.sM_Product.count({
+        where: { categoryId: cat.id },
+      })
+      if (productCount === 0) {
+        await prisma.sM_Category.delete({ where: { id: cat.id } })
+        return JSON.stringify({ success: true, deleted: cat.name, moved: 0 })
+      }
+      const reassignName = (input.reassignToName || '').trim()
+      if (!reassignName) {
+        return JSON.stringify({
+          error: `${cat.name} still has ${productCount} product${productCount === 1 ? '' : 's'}. Re-call with reassignToName=<another category>.`,
+          productCount,
+        })
+      }
+      const target = await prisma.sM_Category.findFirst({
+        where: { name: { equals: reassignName, mode: 'insensitive' } },
+      })
+      if (!target) {
+        return JSON.stringify({
+          error: `Reassign target "${reassignName}" not found`,
+        })
+      }
+      if (target.id === cat.id) {
+        return JSON.stringify({
+          error: 'reassignToName cannot be the same category',
+        })
+      }
+      await prisma.$transaction([
+        prisma.sM_Product.updateMany({
+          where: { categoryId: cat.id },
+          data: { categoryId: target.id },
+        }),
+        prisma.sM_Category.delete({ where: { id: cat.id } }),
+      ])
+      return JSON.stringify({
+        success: true,
+        deleted: cat.name,
+        moved: productCount,
+        movedTo: target.name,
+      })
+    }
+
     // ── CRM tools ────────────────────────────────────────────────────────
 
     case 'list_customers': {
@@ -1226,7 +1457,89 @@ When answering "who are my top customers?", prefer list_customers with a limit o
 
 Do NOT attempt to email customers, run marketing campaigns, or text people — those integrations aren't built yet. If Melly asks, tell her it's coming in a future phase and offer to tag or note the customers instead so she has a list ready.
 
+{{STYLE_SAMPLES}}
+Categories (the product groups shown on /shop):
+- create_category, update_category, delete_category are available
+- delete_category requires reassignToName when the category still has products — it can't drop products on the floor
+- Each category has an icon (single emoji) shown on the admin board and the public shop pills. When Melly creates or edits a category and does NOT specify an icon, pick a single emoji yourself that fits the meaning — 🛁 for bath, 🕯️ for candles/home fragrance, 💋 for lip, 🪮 for beard, 🌿 for herbal, 🌸 for floral, etc. Just include iconEmoji in the same call; don't ask first.
+
 Keep responses concise and conversational. Don't be overly formal.`
+
+// ── Style memory ────────────────────────────────────────────────────────
+// We keep the last N user messages so Claude can pick up Melly's phrasing.
+// Cap is small on purpose — too many samples crowds the system prompt and
+// the most recent ones carry the most signal.
+const STYLE_SAMPLE_INJECT_COUNT = 8
+const STYLE_SAMPLE_RETENTION = 30
+const STYLE_SAMPLE_MIN_LEN = 10
+const STYLE_SAMPLE_MAX_LEN = 500
+
+async function buildSystemPrompt(): Promise<string> {
+  let block = ''
+  try {
+    const samples = await prisma.sM_AIMessageSample.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: STYLE_SAMPLE_INJECT_COUNT,
+    })
+    if (samples.length >= 3) {
+      // Show oldest → newest so the most recent example reads last.
+      const lines = samples
+        .reverse()
+        .map((s) => `- ${s.content.replace(/\s+/g, ' ').trim()}`)
+        .join('\n')
+      block =
+        `\nMelly's recent phrasing (use these as style hints — don't quote them, ` +
+        `just match her tone, shorthand, and vocabulary):\n${lines}\n`
+    }
+  } catch {
+    // If the table is missing or the query blows up, fall back to the base
+    // prompt — never block a chat turn over style hints.
+  }
+  return SYSTEM_PROMPT.replace('{{STYLE_SAMPLES}}', block)
+}
+
+/**
+ * Persist the most recent user message from the incoming request as a
+ * style sample. Skips:
+ *  - tool_result turns (no string content)
+ *  - empty / very short messages
+ *  - exact duplicates of the most recent sample (covers retries)
+ */
+async function maybeSaveSample(messages: Anthropic.MessageParam[]) {
+  const last = messages[messages.length - 1]
+  if (!last || last.role !== 'user') return
+  if (typeof last.content !== 'string') return // tool_result block
+  const text = last.content.trim()
+  if (text.length < STYLE_SAMPLE_MIN_LEN) return
+
+  const trimmed = text.slice(0, STYLE_SAMPLE_MAX_LEN)
+  try {
+    const newest = await prisma.sM_AIMessageSample.findFirst({
+      orderBy: { createdAt: 'desc' },
+      select: { content: true },
+    })
+    if (newest && newest.content === trimmed) return
+
+    await prisma.sM_AIMessageSample.create({ data: { content: trimmed } })
+
+    // Trim to retention window. Cheap to do every turn at this scale.
+    const total = await prisma.sM_AIMessageSample.count()
+    if (total > STYLE_SAMPLE_RETENTION) {
+      const overflow = await prisma.sM_AIMessageSample.findMany({
+        orderBy: { createdAt: 'asc' },
+        take: total - STYLE_SAMPLE_RETENTION,
+        select: { id: true },
+      })
+      if (overflow.length > 0) {
+        await prisma.sM_AIMessageSample.deleteMany({
+          where: { id: { in: overflow.map((r) => r.id) } },
+        })
+      }
+    }
+  } catch {
+    // Sample persistence is best-effort. Never break a chat turn over it.
+  }
+}
 
 export async function POST(req: NextRequest) {
   if (!(await checkAdmin())) {
@@ -1248,7 +1561,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No messages provided' }, { status: 400 })
   }
 
+  // Save the current user turn (best-effort, before the LLM call so it
+  // still gets logged even if Claude errors).
+  await maybeSaveSample(messages)
+
   const client = new Anthropic({ apiKey })
+  const systemPrompt = await buildSystemPrompt()
 
   try {
     // Agentic loop: keep going until Claude produces a final text response
@@ -1258,7 +1576,7 @@ export async function POST(req: NextRequest) {
       const response = await client.messages.create({
         model: 'claude-sonnet-4-6',
         max_tokens: 1024,
-        system: SYSTEM_PROMPT,
+        system: systemPrompt,
         tools,
         messages: currentMessages,
       })
