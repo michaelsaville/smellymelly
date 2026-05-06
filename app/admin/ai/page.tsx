@@ -8,14 +8,22 @@ export default async function AIPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="font-display text-3xl font-bold text-brand-dark">
-          AI Assistant
-        </h1>
-        <p className="text-sm text-brand-brown/60 mt-1">
-          Tell me what you need and I&apos;ll handle it — add products, update
-          inventory, manage materials, whatever you want.
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-3xl font-bold text-brand-dark">
+            AI Assistant
+          </h1>
+          <p className="text-sm text-brand-brown/60 mt-1">
+            Tell me what you need and I&apos;ll handle it — add products, update
+            inventory, manage materials, whatever you want.
+          </p>
+        </div>
+        <a
+          href="/admin/ai/memory"
+          className="whitespace-nowrap text-xs text-brand-brown/60 hover:text-brand-terra"
+        >
+          Memory →
+        </a>
       </div>
       <AIChat />
     </div>
