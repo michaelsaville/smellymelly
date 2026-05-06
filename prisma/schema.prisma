@@ -130,6 +130,10 @@ model SM_ProductImage {
 model SM_Scent {
   id        String   @id @default(cuid())
   name      String   @unique
+  /// Customer-facing scent description. Initially AI-generated via the
+  /// /admin/scents/descriptions tool, then editable. Renders on the
+  /// printable scent-descriptions paper form.
+  description String? @db.Text
   sortOrder Int      @default(0)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())

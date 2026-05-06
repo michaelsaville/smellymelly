@@ -1,0 +1,120 @@
+/* Print stylesheet for the scent-descriptions paper form. Independent of
+   menu and scent-sheet CSS so densities can be tuned without breaking
+   sibling pages. Per the SM admin-tool pattern (memory). */
+
+:root {
+  --desc-ink: #2b1810;
+  --desc-muted: #6a4a3a;
+  --desc-rule: #d8c8b8;
+  --desc-accent: #c8557a;
+  --desc-cream: #faf6f0;
+}
+
+.sm-descriptions-wrap {
+  max-width: 7.5in;
+  margin: 0 auto;
+  padding: 0.25in 0.25in 0.5in;
+  background: #fff;
+  color: var(--desc-ink);
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  font-size: 11pt;
+  line-height: 1.4;
+}
+
+.sm-descriptions-header {
+  text-align: center;
+  margin-bottom: 0.35in;
+}
+
+.sm-descriptions-logo {
+  font-family: 'Playfair Display', 'Georgia', serif;
+  font-size: 28pt;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--desc-ink);
+}
+
+.sm-descriptions-tagline {
+  font-family: 'Playfair Display', 'Georgia', serif;
+  font-style: italic;
+  font-size: 14pt;
+  color: var(--desc-muted);
+  margin-top: 0.05in;
+}
+
+.sm-descriptions-divider {
+  width: 2.5in;
+  height: 1.5px;
+  background: var(--desc-accent);
+  margin: 0.18in auto 0;
+}
+
+.sm-descriptions-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 0.35in;
+  row-gap: 0.18in;
+}
+
+.sm-descriptions-item {
+  break-inside: avoid;
+  page-break-inside: avoid;
+  padding: 0.08in 0;
+  border-bottom: 1px dotted var(--desc-rule);
+}
+
+.sm-descriptions-item:last-child {
+  border-bottom: none;
+}
+
+.sm-descriptions-name {
+  font-family: 'Playfair Display', 'Georgia', serif;
+  font-size: 12.5pt;
+  font-weight: 700;
+  margin: 0 0 0.04in;
+  color: var(--desc-ink);
+}
+
+.sm-descriptions-body {
+  margin: 0;
+  font-size: 10pt;
+  line-height: 1.42;
+  color: var(--desc-ink);
+}
+
+.sm-descriptions-empty {
+  color: var(--desc-muted);
+  font-style: italic;
+}
+
+.sm-descriptions-footer {
+  margin-top: 0.3in;
+  padding-top: 0.12in;
+  border-top: 1px solid var(--desc-rule);
+  text-align: center;
+  font-size: 9pt;
+  color: var(--desc-muted);
+  display: flex;
+  justify-content: center;
+  gap: 1em;
+  flex-wrap: wrap;
+}
+
+/* Print refinements — paper output only */
+@media print {
+  .sm-descriptions-wrap {
+    padding: 0;
+  }
+  body.sm-sheet-print {
+    background: #fff;
+  }
+  /* Force columns to fill consistently — single-column on small paper */
+  @media (max-width: 6in) {
+    .sm-descriptions-list {
+      grid-template-columns: 1fr;
+    }
+  }
+}

@@ -20,12 +20,20 @@ export default async function ScentsPage() {
             generate one variant per scent automatically.
           </p>
         </div>
-        <a
-          href="/admin/scents/sheet"
-          className="btn-primary whitespace-nowrap"
-        >
-          Scent sheet →
-        </a>
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href="/admin/scents/descriptions"
+            className="rounded-md border border-brand-warm bg-white px-3 py-1.5 text-sm font-medium text-brand-dark hover:border-brand-terra"
+          >
+            Scent descriptions →
+          </a>
+          <a
+            href="/admin/scents/sheet"
+            className="btn-primary whitespace-nowrap"
+          >
+            Scent sheet →
+          </a>
+        </div>
       </div>
       <ScentManager initialScents={scents} />
     </div>
