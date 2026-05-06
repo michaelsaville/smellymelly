@@ -27,6 +27,8 @@ export default async function ScentSheetPrintPage() {
         name: true,
         iconEmoji: true,
         iconImageUrl: true,
+        iconSheetEmoji: true,
+        iconSheetImageUrl: true,
       },
     }),
     prisma.sM_Settings.findUnique({
@@ -52,12 +54,17 @@ export default async function ScentSheetPrintPage() {
           name: s.name,
           categoryIds: s.categoryLinks.map((l) => l.categoryId),
         }))}
-        categories={categories.map((c) => ({
-          id: c.id,
-          name: c.name,
-          icon: c.iconImageUrl || c.iconEmoji || '·',
-          isImage: !!c.iconImageUrl,
-        }))}
+        categories={categories.map((c) => {
+          // Sheet-specific icons take priority over the website icons.
+          const image = c.iconSheetImageUrl || c.iconImageUrl
+          const emoji = c.iconSheetEmoji || c.iconEmoji
+          return {
+            id: c.id,
+            name: c.name,
+            icon: image || emoji || '·',
+            isImage: !!image,
+          }
+        })}
         storeName={settings?.businessName || "Smelly Melly's"}
         phone={settings?.businessPhone}
         email={settings?.businessEmail}

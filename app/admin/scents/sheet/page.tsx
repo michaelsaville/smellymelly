@@ -1,13 +1,18 @@
 import { prisma } from '@/app/lib/prisma'
 import Link from 'next/link'
 import { ScentSheetEditor } from './ScentSheetEditor'
+import { CategoryIconPicker } from './CategoryIconPicker'
 
 export const dynamic = 'force-dynamic'
 
 /**
- * Admin Scent Sheet builder. List of every scent with toggleable
- * category chips per row. Independent of menu-group membership —
- * see SM_ScentCategory model comment.
+ * Admin Scent Sheet builder. Two sections:
+ *   1. Category icons — Mel can override the website icons with
+ *      sheet-specific ones (sheet image > sheet emoji > website
+ *      image > website emoji > "·" placeholder).
+ *   2. Per-scent category chips — toggleable, marks SM_ScentCategory.
+ *
+ * Independent of menu-group membership — see SM_ScentCategory model.
  */
 export default async function ScentSheetAdminPage() {
   const [scents, categories] = await Promise.all([
@@ -27,6 +32,8 @@ export default async function ScentSheetAdminPage() {
         slug: true,
         iconEmoji: true,
         iconImageUrl: true,
+        iconSheetEmoji: true,
+        iconSheetImageUrl: true,
       },
     }),
   ])
@@ -36,6 +43,19 @@ export default async function ScentSheetAdminPage() {
     name: s.name,
     categoryIds: s.categoryLinks.map((l) => l.categoryId),
   }))
+
+  // Effective icon for chip rendering — sheet overrides win, website
+  // icons are the fallback.
+  const chipCategories = categories.map((c) => {
+    const image = c.iconSheetImageUrl || c.iconImageUrl
+    const emoji = c.iconSheetEmoji || c.iconEmoji
+    return {
+      id: c.id,
+      name: c.name,
+      icon: image || emoji || '·',
+      isImage: !!image,
+    }
+  })
 
   return (
     <div>
@@ -51,11 +71,10 @@ export default async function ScentSheetAdminPage() {
             Scent Sheet
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-brand-brown/60">
-            Mark which categories each scent is available in. The
-            chips here are <em>independent</em> of menu-group
-            membership — toggling them won&apos;t change the cards on
-            the public Scent Menu. Used to print a one-page reference
-            sheet of every scent + the icons of categories it works for.
+            Mark which categories each scent is available in, and pick
+            sheet-specific icons. The chips here are{' '}
+            <em>independent</em> of menu-group membership — toggling
+            them won&apos;t change the cards on the public Scent Menu.
           </p>
         </div>
         <div className="flex flex-col items-end gap-1">
@@ -70,10 +89,7 @@ export default async function ScentSheetAdminPage() {
           {categories.length === 0 && (
             <span className="text-xs text-amber-700">
               No categories yet — add some at{' '}
-              <Link
-                className="underline"
-                href="/admin/categories"
-              >
+              <Link className="underline" href="/admin/categories">
                 /admin/categories
               </Link>
               .
@@ -82,15 +98,35 @@ export default async function ScentSheetAdminPage() {
         </div>
       </div>
 
-      <ScentSheetEditor
-        scents={initial}
-        categories={categories.map((c) => ({
-          id: c.id,
-          name: c.name,
-          icon: c.iconImageUrl || c.iconEmoji || '·',
-          isImage: !!c.iconImageUrl,
-        }))}
-      />
+      {categories.length > 0 && (
+        <section className="mt-6 overflow-hidden rounded-lg border border-brand-brown/15 bg-white">
+          <header className="flex items-end justify-between gap-3 border-b border-brand-brown/10 bg-brand-cream/50 px-4 py-2">
+            <div>
+              <h2 className="text-sm font-semibold text-brand-dark">
+                Category icons
+              </h2>
+              <p className="text-[11px] text-brand-brown/60">
+                Sheet-specific icons override the website ones (kept
+                separate so the storefront keeps its larger marketing
+                images). Type an emoji or upload a small PNG/SVG.
+              </p>
+            </div>
+            <div className="hidden text-[10px] uppercase tracking-wider text-brand-brown/50 sm:flex sm:gap-3">
+              <span className="w-9 text-center">Preview</span>
+              <span className="w-14 text-center">Emoji</span>
+              <span>Image</span>
+              <span className="w-12">Site</span>
+            </div>
+          </header>
+          <div className="divide-y divide-brand-brown/5">
+            {categories.map((c) => (
+              <CategoryIconPicker key={c.id} category={c} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      <ScentSheetEditor scents={initial} categories={chipCategories} />
     </div>
   )
 }

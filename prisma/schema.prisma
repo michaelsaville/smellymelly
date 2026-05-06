@@ -32,6 +32,13 @@ model SM_Category {
   iconEmoji    String?
   iconImageUrl String?
 
+  /// Scent-sheet-specific icons. Independent from the website icons
+  /// above so Mel can use marketing-quality images for the storefront
+  /// while still picking compact emoji/SVG for the scent sheet's
+  /// 14×14 chip rendering. Falls back to the website icons when null.
+  iconSheetEmoji    String?
+  iconSheetImageUrl String?
+
   products   SM_Product[]
   scentLinks SM_ScentCategory[]
 
