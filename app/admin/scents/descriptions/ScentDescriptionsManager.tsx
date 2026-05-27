@@ -6,6 +6,7 @@ interface ScentRow {
   id: string
   name: string
   description: string
+  onDescriptionSheet: boolean
   updatedAt: string
 }
 
@@ -32,9 +33,26 @@ export function ScentDescriptionsManager({
   }, [scents, search])
 
   const emptyCount = scents.filter((s) => !s.description.trim()).length
+  const hiddenCount = scents.filter((s) => !s.onDescriptionSheet).length
 
   function applyRow(id: string, patch: Partial<ScentRow>) {
     setScents((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)))
+  }
+
+  // Toggle whether a scent prints on the descriptions sheet. Optimistic;
+  // reverts on failure.
+  async function toggleSheet(id: string, next: boolean) {
+    applyRow(id, { onDescriptionSheet: next })
+    try {
+      const res = await fetch(`/api/admin/scents/descriptions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ onDescriptionSheet: next }),
+      })
+      if (!res.ok) throw new Error()
+    } catch {
+      applyRow(id, { onDescriptionSheet: !next })
+    }
   }
 
   async function bulkGenerate(scope: 'empty' | 'all') {
@@ -99,6 +117,11 @@ export function ScentDescriptionsManager({
                 ({emptyCount} empty)
               </span>
             )}
+            {hiddenCount > 0 && (
+              <span className="ml-2 text-brand-brown/50">
+                ({hiddenCount} hidden from print)
+              </span>
+            )}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -141,6 +164,7 @@ export function ScentDescriptionsManager({
                 key={s.id}
                 row={s}
                 onLocalChange={(text) => applyRow(s.id, { description: text })}
+                onToggleSheet={(next) => toggleSheet(s.id, next)}
               />
             ))}
           </div>
@@ -153,9 +177,11 @@ export function ScentDescriptionsManager({
 function ScentRowEditor({
   row,
   onLocalChange,
+  onToggleSheet,
 }: {
   row: ScentRow
   onLocalChange: (text: string) => void
+  onToggleSheet: (next: boolean) => void
 }) {
   const [text, setText] = useState(row.description)
   const [saveState, setSaveState] = useState<
@@ -234,11 +260,31 @@ function ScentRowEditor({
   }
 
   return (
-    <div className="grid grid-cols-[180px_1fr_auto] items-start gap-3 px-4 py-3 hover:bg-brand-cream/30">
+    <div
+      className={`grid grid-cols-[180px_1fr_auto] items-start gap-3 px-4 py-3 hover:bg-brand-cream/30 ${
+        row.onDescriptionSheet ? '' : 'opacity-60'
+      }`}
+    >
       <div className="pt-2">
         <div className="font-display text-sm font-semibold text-brand-dark">
           {row.name}
         </div>
+        <label
+          className="mt-1 flex cursor-pointer items-center gap-1.5 text-[11px] text-brand-brown/70"
+          title="Show this scent on the printed descriptions sheet"
+        >
+          <input
+            type="checkbox"
+            checked={row.onDescriptionSheet}
+            onChange={(e) => onToggleSheet(e.target.checked)}
+            className="h-3.5 w-3.5 accent-brand-terra"
+          />
+          {row.onDescriptionSheet ? (
+            'Print'
+          ) : (
+            <span className="text-brand-brown/45">won&apos;t print</span>
+          )}
+        </label>
         <div className="mt-0.5 text-[10px] text-brand-brown/50">
           {saveState === 'saving' && 'saving…'}
           {saveState === 'saved' && (

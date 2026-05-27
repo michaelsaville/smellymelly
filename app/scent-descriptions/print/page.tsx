@@ -13,7 +13,10 @@ export const metadata: Metadata = {
 export default async function ScentDescriptionsPrintPage() {
   const [scents, settings] = await Promise.all([
     prisma.sM_Scent.findMany({
-      where: { isActive: true },
+      // Only scents that are active AND ticked for the printed sheet.
+      // Unticking "Print" in /admin/scents/descriptions drops a duplicate
+      // or out-of-stock scent from this document without disabling it.
+      where: { isActive: true, onDescriptionSheet: true },
       orderBy: { name: 'asc' },
       select: { id: true, name: true, description: true },
     }),

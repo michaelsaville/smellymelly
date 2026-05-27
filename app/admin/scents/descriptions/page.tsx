@@ -18,6 +18,7 @@ export default async function ScentDescriptionsAdminPage() {
       id: true,
       name: true,
       description: true,
+      onDescriptionSheet: true,
       updatedAt: true,
     },
   })
@@ -39,7 +40,9 @@ export default async function ScentDescriptionsAdminPage() {
             Customer-facing one-paragraph descriptions for the printable
             paper form. AI pre-fills empty rows; you can edit any of them
             and the change saves automatically. Per-row{' '}
-            <em>Regenerate</em> re-rolls a single description.
+            <em>Regenerate</em> re-rolls a single description. Untick{' '}
+            <em>Print</em> to drop a scent from the printed sheet (e.g. a
+            duplicate or one that&apos;s out of stock) without removing it.
           </p>
         </div>
         <a
@@ -57,6 +60,7 @@ export default async function ScentDescriptionsAdminPage() {
           id: s.id,
           name: s.name,
           description: s.description ?? '',
+          onDescriptionSheet: s.onDescriptionSheet,
           updatedAt: s.updatedAt.toISOString(),
         }))}
       />

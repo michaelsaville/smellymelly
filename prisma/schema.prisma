@@ -136,6 +136,12 @@ model SM_Scent {
   description String? @db.Text
   sortOrder Int      @default(0)
   isActive  Boolean  @default(true)
+  /// Include this scent on the printable scent-descriptions sheet. Default
+  /// true so every existing scent keeps printing. Unchecking it in
+  /// /admin/scents/descriptions hides the scent from /scent-descriptions/print
+  /// without disabling it everywhere — used to drop out-of-stock or
+  /// duplicate entries from the printed copy. Distinct from isActive.
+  onDescriptionSheet Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
