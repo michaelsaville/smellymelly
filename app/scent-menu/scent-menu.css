@@ -1,6 +1,11 @@
 /* Print stylesheet for the illustrated "bistro" scent menu. Independent of
    the plain scent-descriptions sheet so the two can be tuned separately.
-   Framed, crested, two-column tasting-menu presentation. */
+   Framed, crested, two-column tasting-menu presentation.
+
+   Each printed sheet is its own <section.sm-menu-page>: the border + corner
+   fleurons live on that per-page element so every page is fully boxed in,
+   rather than a single frame whose edges only land on the first/last sheet.
+   The last page (.is-last) centers its leftover items vertically. */
 
 :root {
   --m-ink: #3a2418;
@@ -10,22 +15,49 @@
   --m-cream: #fff8f0;
 }
 
-.sm-menu-frame {
+/* ── Per-page frame ───────────────────────────────────────────── */
+/* The frame is locked to one printable sheet: letter portrait (8.5×11)
+   minus the 0.5in @page margins leaves a 7.5×10in printable area, and we
+   take 9.9in of that (0.1in of slack so border + rounding never tips the
+   sheet onto a phantom blank page). Fixing BOTH min- and max-height — plus
+   overflow:hidden — means a page's items can never bleed onto the next
+   sheet (the bug where a chunk ran ~halfway down the following page); the
+   item-count constants in ScentMenu.tsx keep content within this height.
+   The fixed height also gives the last page room to center into. */
+.sm-menu-page {
   position: relative;
-  max-width: 7.6in;
+  box-sizing: border-box;
+  width: 7.5in;
+  max-width: 100%;
+  height: 9.9in;
   margin: 0 auto;
+  overflow: hidden;
   background: var(--m-cream);
   border: 2px solid var(--m-accent);
   padding: 0.16in;
   color: var(--m-ink);
+  display: flex;
 }
 
 .sm-menu-inner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--m-rule);
   padding: 0.34in 0.44in 0.26in;
 }
 
-/* Ornamental fleurons tucked into the four frame corners */
+/* The content block. On continuation pages it sits at the top; on the last
+   page it is centered vertically by margin:auto against the flex column. */
+.sm-menu-pagebody {
+  width: 100%;
+}
+
+.sm-menu-page.is-last .sm-menu-pagebody {
+  margin: auto 0; /* vertical centering within the full-height inner frame */
+}
+
+/* Ornamental fleurons tucked into the four frame corners (per page) */
 .sm-menu-corner {
   position: absolute;
   color: var(--m-accent);
@@ -107,11 +139,13 @@
   margin-top: 0.08in;
 }
 
+/* Each entry centers its name over the description below it. */
 .sm-menu-item {
   break-inside: avoid;
   page-break-inside: avoid;
   padding: 0.1in 0;
   border-bottom: 1px dotted var(--m-rule);
+  text-align: center;
 }
 
 .sm-menu-item-name {
@@ -167,8 +201,17 @@
   body.sm-sheet-print {
     background: #fff;
   }
-  .sm-menu-frame {
+  .sm-menu-page {
     margin: 0;
+  }
+  /* One sheet per page — the box closes on every printed page. */
+  .sm-menu-page {
+    break-after: page;
+    page-break-after: always;
+  }
+  .sm-menu-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
   }
   @media (max-width: 6in) {
     .sm-menu-list {
