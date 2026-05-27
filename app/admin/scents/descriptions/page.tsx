@@ -45,14 +45,24 @@ export default async function ScentDescriptionsAdminPage() {
             duplicate or one that&apos;s out of stock) without removing it.
           </p>
         </div>
-        <a
-          href="/scent-descriptions/print"
-          target="_blank"
-          rel="noreferrer"
-          className="btn-primary whitespace-nowrap"
-        >
-          Print scent descriptions →
-        </a>
+        <div className="flex flex-col items-stretch gap-2 sm:flex-row">
+          <a
+            href="/scent-descriptions/print"
+            target="_blank"
+            rel="noreferrer"
+            className="btn-secondary whitespace-nowrap"
+          >
+            Print plain sheet →
+          </a>
+          <a
+            href="/scent-menu/print"
+            target="_blank"
+            rel="noreferrer"
+            className="btn-primary whitespace-nowrap"
+          >
+            Print menu style →
+          </a>
+        </div>
       </div>
 
       <ScentDescriptionsManager
