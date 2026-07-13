@@ -7,6 +7,8 @@ export async function GET() {
   const settings = await prisma.sM_Settings.findFirst({
     where: { id: 'singleton' },
     select: {
+      businessEmail: true,
+      businessPhone: true,
       venmoHandle: true,
       cashAppTag: true,
       paymentInstructions: true,
@@ -14,6 +16,8 @@ export async function GET() {
     },
   })
   return NextResponse.json({
+    businessEmail: settings?.businessEmail ?? '',
+    businessPhone: settings?.businessPhone ?? '',
     venmoHandle: settings?.venmoHandle ?? '',
     cashAppTag: settings?.cashAppTag ?? '',
     paymentInstructions: settings?.paymentInstructions ?? '',

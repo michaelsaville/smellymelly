@@ -19,10 +19,12 @@ export default function LabelPreview({
   productName,
   labels,
   ingredients,
+  phone,
 }: {
   productName: string
   labels: LabelEntry[]
   ingredients: string
+  phone: string
 }) {
   const [selected, setSelected] = useState<Set<number>>(
     () => new Set(labels.map((_, i) => i)),
@@ -72,7 +74,7 @@ export default function LabelPreview({
         ctx.fillText('Smelly Mellys', CANVAS_W / 2, 80)
         ctx.font = '26px sans-serif'
         ctx.fillStyle = '#333333'
-        ctx.fillText('240-362-9354', CANVAS_W / 2, 120)
+        ctx.fillText(phone, CANVAS_W / 2, 120)
         ctx.fillStyle = '#000000'
         ctx.font = 'bold 32px sans-serif'
         ctx.fillText(scent, CANVAS_W / 2, 220)
@@ -99,7 +101,7 @@ export default function LabelPreview({
         URL.revokeObjectURL(url)
       })
     },
-    [ingredientList, productName],
+    [ingredientList, productName, phone],
   )
 
   const selectedLabels = labels.filter((_, i) => selected.has(i))
@@ -210,7 +212,7 @@ export default function LabelPreview({
               {/* Mini preview */}
               <div className="flex gap-2">
                 <div className="border border-brand-warm/60 rounded overflow-hidden flex-shrink-0">
-                  <FrontLabel scent={label.scent} productName={productName} />
+                  <FrontLabel scent={label.scent} productName={productName} phone={phone} />
                 </div>
                 <div className="border border-brand-warm/60 rounded overflow-hidden flex-shrink-0">
                   <BackLabel ingredients={ingredientList} />
@@ -226,7 +228,7 @@ export default function LabelPreview({
         {selectedLabels.flatMap((label, i) =>
           Array.from({ length: copies }).flatMap((_, c) => [
             <div key={`front-${i}-${c}`} className="label-page">
-              <FrontLabel scent={label.scent} productName={productName} />
+              <FrontLabel scent={label.scent} productName={productName} phone={phone} />
             </div>,
             <div key={`back-${i}-${c}`} className="label-page">
               <BackLabel ingredients={ingredientList} />
@@ -264,9 +266,11 @@ export default function LabelPreview({
 function FrontLabel({
   scent,
   productName,
+  phone,
 }: {
   scent: string
   productName: string
+  phone: string
 }) {
   return (
     <div
@@ -277,7 +281,7 @@ function FrontLabel({
         Smelly Mellys
       </span>
       <span className="text-[6.5px] leading-tight text-gray-700">
-        240-362-9354
+        {phone}
       </span>
       <span className="block h-[2mm]" />
       <span className="text-[8px] font-semibold leading-tight">

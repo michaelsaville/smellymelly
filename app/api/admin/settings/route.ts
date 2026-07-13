@@ -22,6 +22,8 @@ interface AllergenInput {
 }
 
 interface Body {
+  businessEmail?: string
+  businessPhone?: string
   venmoHandle?: string
   cashAppTag?: string
   paymentInstructions?: string
@@ -39,6 +41,8 @@ export async function POST(req: NextRequest) {
 
   const body = (await req.json()) as Body
   const data: {
+    businessEmail?: string | null
+    businessPhone?: string | null
     venmoHandle?: string
     cashAppTag?: string
     paymentInstructions?: string
@@ -47,6 +51,12 @@ export async function POST(req: NextRequest) {
     menuOrientation?: string
   } = {}
 
+  if (typeof body.businessEmail === 'string') {
+    data.businessEmail = body.businessEmail.trim() || null
+  }
+  if (typeof body.businessPhone === 'string') {
+    data.businessPhone = body.businessPhone.trim() || null
+  }
   if (typeof body.venmoHandle === 'string') data.venmoHandle = body.venmoHandle
   if (typeof body.cashAppTag === 'string') data.cashAppTag = body.cashAppTag
   if (typeof body.paymentInstructions === 'string') {

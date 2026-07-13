@@ -13,13 +13,19 @@ export default async function LabelsPage({
   await requireAdmin()
   const { id } = await params
 
-  const product = await prisma.sM_Product.findUnique({
-    where: { id },
-    include: {
-      category: true,
-      variants: { where: { isActive: true }, orderBy: { name: 'asc' } },
-    },
-  })
+  const [product, settings] = await Promise.all([
+    prisma.sM_Product.findUnique({
+      where: { id },
+      include: {
+        category: true,
+        variants: { where: { isActive: true }, orderBy: { name: 'asc' } },
+      },
+    }),
+    prisma.sM_Settings.findFirst({
+      where: { id: 'singleton' },
+      select: { businessPhone: true },
+    }),
+  ])
 
   if (!product) redirect('/admin/products')
 
@@ -55,6 +61,7 @@ export default async function LabelsPage({
         productName={product.category.name}
         labels={labels}
         ingredients={product.ingredients ?? ''}
+        phone={settings?.businessPhone || '240-362-9352'}
       />
     </div>
   )

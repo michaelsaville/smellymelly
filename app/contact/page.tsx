@@ -1,9 +1,27 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import StoreLayout from '@/app/components/StoreLayout'
 
+// Fallbacks if settings haven't been fetched yet / are unset. Kept in sync with
+// the seeded SM_Settings values so the page is correct even before the fetch.
+const DEFAULT_EMAIL = 'smellymellysinc@gmail.com'
+const DEFAULT_PHONE = '240-362-9352'
+
 export default function ContactPage() {
+  const [contactEmail, setContactEmail] = useState(DEFAULT_EMAIL)
+  const [contactPhone, setContactPhone] = useState(DEFAULT_PHONE)
+
+  useEffect(() => {
+    fetch('/api/settings/public')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => {
+        if (s?.businessEmail) setContactEmail(s.businessEmail)
+        if (s?.businessPhone) setContactPhone(s.businessPhone)
+      })
+      .catch(() => {})
+  }, [])
+
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [message, setMessage] = useState('')
@@ -146,13 +164,18 @@ export default function ContactPage() {
               <div className="space-y-4 text-sm text-brand-brown">
                 <div>
                   <p className="font-medium text-brand-dark">Email</p>
-                  <a href="mailto:hello@smellymelly.net" className="text-brand-terra hover:underline">
-                    hello@smellymelly.net
+                  <a href={`mailto:${contactEmail}`} className="text-brand-terra hover:underline">
+                    {contactEmail}
                   </a>
                 </div>
                 <div>
                   <p className="font-medium text-brand-dark">Phone</p>
-                  <p className="text-brand-brown/70">(301) 555-0123</p>
+                  <a
+                    href={`tel:${contactPhone.replace(/[^+\d]/g, '')}`}
+                    className="text-brand-terra hover:underline"
+                  >
+                    {contactPhone}
+                  </a>
                 </div>
                 <div>
                   <p className="font-medium text-brand-dark">Location</p>

@@ -32,12 +32,14 @@ export default async function SettingsPage() {
         Settings
       </h1>
       <p className="text-sm text-brand-brown/60 mb-6">
-        Payment handles, tax, ingredient templates, and the product disclaimer.
-        Maintenance mode lives on the dashboard.
+        Business contact info, payment handles, tax, ingredient templates, and
+        the product disclaimer. Maintenance mode lives on the dashboard.
       </p>
 
       <SettingsForm
         logoUrl={settings?.logoUrl ?? null}
+        businessEmail={settings?.businessEmail ?? ''}
+        businessPhone={settings?.businessPhone ?? ''}
         venmoHandle={settings?.venmoHandle ?? ''}
         cashAppTag={settings?.cashAppTag ?? ''}
         paymentInstructions={settings?.paymentInstructions ?? ''}

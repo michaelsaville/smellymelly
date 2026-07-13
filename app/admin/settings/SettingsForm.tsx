@@ -22,6 +22,8 @@ interface AllergenRow {
 
 interface Props {
   logoUrl: string | null
+  businessEmail: string
+  businessPhone: string
   venmoHandle: string
   cashAppTag: string
   paymentInstructions: string
@@ -33,6 +35,8 @@ interface Props {
 
 export default function SettingsForm({
   logoUrl: initialLogoUrl,
+  businessEmail: initialEmail,
+  businessPhone: initialPhone,
   venmoHandle: initialVenmo,
   cashAppTag: initialCashApp,
   paymentInstructions: initialInstructions,
@@ -47,6 +51,8 @@ export default function SettingsForm({
   const [logoError, setLogoError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const [businessEmail, setBusinessEmail] = useState(initialEmail)
+  const [businessPhone, setBusinessPhone] = useState(initialPhone)
   const [venmoHandle, setVenmoHandle] = useState(initialVenmo)
   const [cashAppTag, setCashAppTag] = useState(initialCashApp)
   const [paymentInstructions, setPaymentInstructions] = useState(initialInstructions)
@@ -147,6 +153,8 @@ export default function SettingsForm({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          businessEmail: businessEmail.trim(),
+          businessPhone: businessPhone.trim(),
           venmoHandle: venmoHandle.trim(),
           cashAppTag: cashAppTag.trim(),
           paymentInstructions: paymentInstructions.trim(),
@@ -242,6 +250,42 @@ export default function SettingsForm({
             {logoError && (
               <p className="text-xs text-red-700">{logoError}</p>
             )}
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2 className="font-display text-lg font-semibold text-brand-dark mb-1">
+          Business contact
+        </h2>
+        <p className="text-xs text-brand-brown/60 mb-4">
+          Shown publicly on the Contact page and printed on product labels.
+          Update here and it changes everywhere it&apos;s posted.
+        </p>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs text-brand-brown/60 mb-1">
+              Contact email
+            </label>
+            <input
+              type="email"
+              value={businessEmail}
+              onChange={(e) => setBusinessEmail(e.target.value)}
+              placeholder="smellymellysinc@gmail.com"
+              className="input"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-brand-brown/60 mb-1">
+              Contact phone
+            </label>
+            <input
+              type="tel"
+              value={businessPhone}
+              onChange={(e) => setBusinessPhone(e.target.value)}
+              placeholder="240-362-9352"
+              className="input"
+            />
           </div>
         </div>
       </div>
