@@ -55,7 +55,12 @@ export async function POST(req: NextRequest) {
     const intent = await stripe.paymentIntents.create({
       amount: totalCents,
       currency: 'usd',
-      automatic_payment_methods: { enabled: true },
+      // Enable Stripe's auto payment methods but exclude redirect-based ones
+      // (Cash App, Klarna, bank redirects…). Checkout confirms in-page and
+      // creates the order synchronously right after — a redirect away would
+      // break that flow. With allow_redirects:'never' + confirmPayment's
+      // redirect:'if_required', Stripe no longer requires a return_url.
+      automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
       receipt_email: email,
       description: `Smelly Melly order for ${body.customer?.name?.trim() || email}`,
       metadata: {
