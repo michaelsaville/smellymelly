@@ -37,12 +37,25 @@ export default async function ReportsPage({
       : {}),
   }
 
+  // Paid custom/wholesale invoices are a real revenue channel — range them on
+  // when they were PAID (revenue realized), not when drafted.
+  const invoices = await prisma.sM_Invoice.findMany({
+    where: {
+      status: 'PAID',
+      ...(dr.gte || dr.lte
+        ? { paidAt: { ...(dr.gte ? { gte: dr.gte } : {}), ...(dr.lte ? { lte: dr.lte } : {}) } }
+        : {}),
+    },
+    select: { subtotalCents: true, taxCents: true, totalCents: true },
+  })
+
   const orders = await prisma.sM_Order.findMany({
     where,
     select: {
       taxCents: true,
       shippingCents: true,
       totalCents: true,
+      discountCents: true,
       items: {
         select: {
           productName: true,
@@ -54,13 +67,16 @@ export default async function ReportsPage({
     },
   })
 
-  // Roll up totals + a per-product breakdown.
+  // Roll up totals + a per-product breakdown. Per-product "Sales" stays at the
+  // gross line price (a volume metric); order-level promo discounts are netted
+  // off the store-wide revenue/profit figures below.
   type Agg = { units: number; revenueCents: number; cogsCents: number; missingCost: boolean }
   const byProduct = new Map<string, Agg>()
   let taxCents = 0
   let shippingCents = 0
   let grossCents = 0
-  let revenueCents = 0
+  let grossProductCents = 0
+  let discountCents = 0
   let cogsCents = 0
   let anyMissingCost = false
 
@@ -68,11 +84,12 @@ export default async function ReportsPage({
     taxCents += o.taxCents
     shippingCents += o.shippingCents
     grossCents += o.totalCents
+    discountCents += o.discountCents
     for (const it of o.items) {
       const cost = (it.variant?.costCents ?? 0) * it.quantity
       const missing = !it.variant?.costCents
       if (missing) anyMissingCost = true
-      revenueCents += it.totalCents
+      grossProductCents += it.totalCents
       cogsCents += cost
       const cur = byProduct.get(it.productName) ?? { units: 0, revenueCents: 0, cogsCents: 0, missingCost: false }
       cur.units += it.quantity
@@ -83,6 +100,16 @@ export default async function ReportsPage({
     }
   }
 
+  // Fold in paid invoices: their subtotal is revenue, their tax is collected tax.
+  const invoiceRevenueCents = invoices.reduce((s, i) => s + i.subtotalCents, 0)
+  const invoiceTaxCents = invoices.reduce((s, i) => s + i.taxCents, 0)
+  const invoiceGrossCents = invoices.reduce((s, i) => s + i.totalCents, 0)
+  taxCents += invoiceTaxCents
+  grossCents += invoiceGrossCents
+
+  // Net revenue = gross product sales − promo discounts + paid-invoice sales.
+  // Invoices carry no COGS linkage, so they flow straight to profit.
+  const revenueCents = grossProductCents - discountCents + invoiceRevenueCents
   const profitCents = revenueCents - cogsCents
   const margin = revenueCents > 0 ? profitCents / revenueCents : 0
   const products = Array.from(byProduct.entries())
@@ -91,7 +118,7 @@ export default async function ReportsPage({
 
   const tiles = [
     { label: 'Orders', value: String(orders.length) },
-    { label: 'Product sales', value: money(revenueCents) },
+    { label: 'Net sales', value: money(revenueCents) },
     { label: 'Sales tax', value: money(taxCents), accent: true },
     { label: 'Cost of goods', value: money(cogsCents) },
     { label: 'Profit', value: money(profitCents), accent: true },
@@ -107,7 +134,7 @@ export default async function ReportsPage({
 
       <div className="card mb-5">
         <div className="text-xs font-medium uppercase tracking-wider text-brand-brown/60 mb-3">
-          {describeRange(filters)} · paid orders
+          {describeRange(filters)} · paid orders{invoices.length > 0 ? ' + invoices' : ''}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {tiles.map((t) => (
@@ -121,13 +148,17 @@ export default async function ReportsPage({
         </div>
         <p className="mt-3 text-xs text-brand-brown/50">
           <strong>{money(taxCents)}</strong> is the sales tax you collected this period (for filing).
+          Net sales are after promo discounts{discountCents > 0 ? ` (−${money(discountCents)})` : ''}
+          {invoices.length > 0 && `, and include ${invoices.length} paid invoice${invoices.length === 1 ? '' : 's'} (${money(invoiceRevenueCents)} custom/wholesale)`}.
           Gross incl. tax + shipping: {money(grossCents)} · shipping collected: {money(shippingCents)}.
           {anyMissingCost && ' ⚠ Some items have no cost set, so COGS/profit are understated — set variant costs or link recipes.'}
         </p>
       </div>
 
       {products.length === 0 ? (
-        <div className="card text-center py-12 text-brand-brown/60">No paid orders in this period.</div>
+        <div className="card text-center py-12 text-brand-brown/60">
+          No product sales in this period.{invoices.length > 0 && ' (Invoice revenue is included in the totals above.)'}
+        </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-brand-warm/60">
           <table className="w-full text-sm">

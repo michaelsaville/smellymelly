@@ -140,6 +140,19 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         )
       }
+
+      // Idempotency: if this PaymentIntent already has an order (retry / double
+      // submit / network re-send), return that order instead of creating a
+      // second PAID order and decrementing stock twice. stripePaymentIntentId
+      // is @unique, so the create below would also throw — this just makes the
+      // retry succeed cleanly.
+      const already = await prisma.sM_Order.findUnique({
+        where: { stripePaymentIntentId },
+        select: { id: true, orderNumber: true },
+      })
+      if (already) {
+        return NextResponse.json({ orderId: already.id, orderNumber: already.orderNumber })
+      }
     }
 
     const paidNow = !!stripePaymentIntentId
@@ -201,6 +214,22 @@ export async function POST(req: NextRequest) {
         return created
       })
     } catch (txErr) {
+      // Concurrent duplicate: two requests with the same PaymentIntent both
+      // passed the pre-check, and this one lost the unique-constraint race. The
+      // OTHER request created the order — return it, do NOT refund (the charge
+      // backs a real order).
+      const isP2002 =
+        typeof txErr === 'object' && txErr !== null && (txErr as { code?: string }).code === 'P2002'
+      if (stripePaymentIntentId && isP2002) {
+        const winner = await prisma.sM_Order.findUnique({
+          where: { stripePaymentIntentId },
+          select: { id: true, orderNumber: true },
+        })
+        if (winner) {
+          return NextResponse.json({ orderId: winner.id, orderNumber: winner.orderNumber })
+        }
+      }
+
       // Oversold in the race window (or a DB error) after the card was charged —
       // reverse the payment so we never keep money without an order.
       await autoRefund({ stripePaymentIntentId })

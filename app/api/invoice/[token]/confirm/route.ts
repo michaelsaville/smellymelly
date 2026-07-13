@@ -49,8 +49,10 @@ export async function POST(
       )
     }
     // Bind the PI to this invoice — never let one invoice be closed by a charge
-    // created for a different one.
-    if (intent.metadata?.invoiceId && intent.metadata.invoiceId !== invoice.id) {
+    // created for a different invoice or by a storefront-checkout PI. Our
+    // /pay-intent route always stamps metadata.invoiceId, so require an exact
+    // match (absent metadata is rejected too).
+    if (intent.metadata?.invoiceId !== invoice.id) {
       return NextResponse.json({ error: 'Payment does not belong to this invoice.' }, { status: 400 })
     }
 

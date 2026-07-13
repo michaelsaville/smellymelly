@@ -93,7 +93,13 @@ export async function PATCH(
   if (body.status === 'REFUNDED' && existing.status !== 'REFUNDED' && existing.paidAt) {
     try {
       if (existing.stripePaymentIntentId && isStripeConfigured()) {
-        await getStripe().refunds.create({ payment_intent: existing.stripePaymentIntentId })
+        // Deterministic idempotency key: if the refund succeeded but the DB
+        // status update below failed, a retry returns the SAME refund instead
+        // of issuing a second one.
+        await getStripe().refunds.create(
+          { payment_intent: existing.stripePaymentIntentId },
+          { idempotencyKey: `refund_${existing.stripePaymentIntentId}` },
+        )
       } else if (existing.squarePaymentId && isSquareConfigured()) {
         await getSquareClient().refunds.refundPayment({
           idempotencyKey: randomUUID(),

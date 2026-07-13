@@ -344,7 +344,9 @@ model SM_Order {
   manualPaymentNote String?
   squarePaymentId String?
   squareOrderId   String?
-  stripePaymentIntentId String?
+  // Unique so a retried/double-submitted checkout with the same confirmed
+  // PaymentIntent can't create a second PAID order (double stock decrement).
+  stripePaymentIntentId String? @unique
 
   // Shipping
   trackingNumber String?
@@ -562,7 +564,8 @@ model SM_Invoice {
   // Unguessable token for the customer-facing pay page (/invoice/[payToken]).
   // Populated when the invoice is created; older rows get one on first admin view.
   payToken              String? @unique
-  stripePaymentIntentId String?
+  // Unique so a single PaymentIntent can't be used to close two invoices.
+  stripePaymentIntentId String? @unique
 
   notes     String?
   sentAt    DateTime?

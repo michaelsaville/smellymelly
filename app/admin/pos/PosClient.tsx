@@ -122,7 +122,7 @@ export default function PosClient({
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
+    <div className="grid gap-6 lg:grid-cols-[1fr_20rem] pb-24 lg:pb-0">
       {/* Catalog */}
       <div>
         <input
@@ -193,7 +193,7 @@ export default function PosClient({
                     <button
                       type="button"
                       onClick={() => setQty(l.v.id, l.qty - 1)}
-                      className="px-2 py-1 text-brand-brown"
+                      className="h-10 w-10 text-lg text-brand-brown"
                       aria-label="Decrease"
                     >
                       −
@@ -203,7 +203,7 @@ export default function PosClient({
                       type="button"
                       onClick={() => setQty(l.v.id, l.qty + 1)}
                       disabled={l.qty >= l.v.stock}
-                      className="px-2 py-1 text-brand-brown disabled:opacity-30"
+                      className="h-10 w-10 text-lg text-brand-brown disabled:opacity-30"
                       aria-label="Increase"
                     >
                       +
@@ -248,7 +248,7 @@ export default function PosClient({
                   key={m}
                   type="button"
                   onClick={() => setPaymentNote(m)}
-                  className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  className={`rounded-full px-4 py-2 text-sm font-medium ${
                     paymentNote === m
                       ? 'bg-brand-terra text-white'
                       : 'bg-brand-warm/50 text-brand-brown hover:bg-brand-warm'
@@ -277,6 +277,23 @@ export default function PosClient({
           </button>
         </div>
       </div>
+
+      {/* Mobile sticky action bar — the cart panel stacks below the whole
+          catalog on phones, so this keeps Complete Sale one tap away. */}
+      {lines.length > 0 && (
+        <div className="lg:hidden fixed inset-x-0 bottom-0 z-40 border-t border-brand-warm/60 bg-white/95 backdrop-blur px-4 py-3 shadow-[0_-2px_10px_rgba(0,0,0,0.06)]">
+          <button
+            onClick={complete}
+            disabled={busy}
+            className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            <span className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-white/25 px-1.5 text-xs font-bold">
+              {lines.reduce((n, l) => n + l.qty, 0)}
+            </span>
+            {busy ? 'Recording…' : `Complete Sale · ${money(total)}`}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

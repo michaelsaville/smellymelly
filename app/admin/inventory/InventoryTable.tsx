@@ -41,8 +41,12 @@ function compareStrings(a: string | null, b: string | null): number {
 }
 
 export function InventoryTable({ variants }: { variants: VariantRow[] }) {
+  // Local copy so stock edits update in place — no full-page reload that would
+  // wipe the search/category/stock filters mid-restock.
+  const [rows, setRows] = useState<VariantRow[]>(variants)
   const [adjusting, setAdjusting] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState<Record<string, boolean>>({})
+  const [errorId, setErrorId] = useState<string | null>(null)
 
   const [sortKey, setSortKey] = useState<SortKey>('stockQuantity')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
@@ -51,12 +55,12 @@ export function InventoryTable({ variants }: { variants: VariantRow[] }) {
   const [stockFilter, setStockFilter] = useState<StockFilter>('all')
 
   const categories = useMemo(() => {
-    return Array.from(new Set(variants.map((v) => v.category))).sort()
-  }, [variants])
+    return Array.from(new Set(rows.map((v) => v.category))).sort()
+  }, [rows])
 
   const filteredSorted = useMemo(() => {
     const q = search.trim().toLowerCase()
-    const filtered = variants.filter((v) => {
+    const filtered = rows.filter((v) => {
       if (categoryFilter && v.category !== categoryFilter) return false
       if (stockFilter === 'in' && v.stockQuantity <= v.lowStockAt) return false
       if (
@@ -95,7 +99,7 @@ export function InventoryTable({ variants }: { variants: VariantRow[] }) {
     })
 
     return sorted
-  }, [variants, search, categoryFilter, stockFilter, sortKey, sortDir])
+  }, [rows, search, categoryFilter, stockFilter, sortKey, sortDir])
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -125,16 +129,21 @@ export function InventoryTable({ variants }: { variants: VariantRow[] }) {
   async function setStock(id: string, qty: number) {
     if (isNaN(qty) || qty < 0) return
     setSaving((prev) => ({ ...prev, [id]: true }))
+    setErrorId(null)
 
     try {
-      await fetch(`/api/admin/products/${id}/stock`, {
+      const res = await fetch(`/api/admin/products/${id}/stock`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stockQuantity: qty }),
       })
-      window.location.reload()
+      if (!res.ok) throw new Error('save failed')
+      // Optimistic in-place update — keeps filters/scroll position intact.
+      setRows((prev) => prev.map((v) => (v.id === id ? { ...v, stockQuantity: qty } : v)))
+      setAdjusting((prev) => ({ ...prev, [id]: '' }))
     } catch {
-      // fail silently
+      // Surface the failure so a non-technical owner knows it didn't save.
+      setErrorId(id)
     } finally {
       setSaving((prev) => ({ ...prev, [id]: false }))
     }
@@ -192,7 +201,7 @@ export function InventoryTable({ variants }: { variants: VariantRow[] }) {
           </button>
         )}
         <span className="text-xs text-brand-brown/50 ml-auto">
-          {filteredSorted.length} of {variants.length}
+          {filteredSorted.length} of {rows.length}
         </span>
       </div>
 
@@ -302,7 +311,7 @@ export function InventoryTable({ variants }: { variants: VariantRow[] }) {
                           onClick={() => handleDelta(v, -1)}
                           disabled={saving[v.id] || v.stockQuantity <= 0}
                           aria-label="Decrease stock by 1"
-                          className="h-8 w-8 flex-shrink-0 rounded border border-brand-warm text-brand-brown hover:bg-brand-warm disabled:opacity-40"
+                          className="h-11 w-11 flex-shrink-0 rounded border border-brand-warm text-lg text-brand-brown hover:bg-brand-warm disabled:opacity-40"
                         >
                           −
                         </button>
@@ -311,7 +320,7 @@ export function InventoryTable({ variants }: { variants: VariantRow[] }) {
                           onClick={() => handleDelta(v, 1)}
                           disabled={saving[v.id]}
                           aria-label="Increase stock by 1"
-                          className="h-8 w-8 flex-shrink-0 rounded border border-brand-warm text-brand-brown hover:bg-brand-warm disabled:opacity-40"
+                          className="h-11 w-11 flex-shrink-0 rounded border border-brand-warm text-lg text-brand-brown hover:bg-brand-warm disabled:opacity-40"
                         >
                           +
                         </button>
@@ -326,17 +335,20 @@ export function InventoryTable({ variants }: { variants: VariantRow[] }) {
                             }))
                           }
                           placeholder={String(v.stockQuantity)}
-                          className="w-16 rounded border border-brand-warm bg-white px-2 py-1 text-sm focus:border-brand-terra focus:outline-none"
+                          className="w-16 rounded border border-brand-warm bg-white px-2 py-2 text-sm focus:border-brand-terra focus:outline-none"
                         />
                         <button
                           type="button"
                           onClick={() => handleAdjust(v.id)}
                           disabled={saving[v.id] || !adjusting[v.id]}
-                          className="rounded bg-brand-terra px-2 py-1 text-xs text-white hover:bg-brand-brown disabled:opacity-50"
+                          className="min-h-[44px] rounded bg-brand-terra px-3 text-xs text-white hover:bg-brand-brown disabled:opacity-50"
                         >
                           {saving[v.id] ? '...' : 'Set'}
                         </button>
                       </div>
+                      {errorId === v.id && (
+                        <p className="mt-1 text-xs text-red-600">Couldn’t save — try again.</p>
+                      )}
                     </td>
                   </tr>
                 )

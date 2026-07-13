@@ -55,7 +55,7 @@ export default function AdminNav({ logoUrl }: { logoUrl: string | null }) {
               type="button"
               aria-label="Menu"
               onClick={() => setOpen((o) => !o)}
-              className="lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg text-brand-brown hover:bg-brand-warm"
+              className="lg:hidden inline-flex h-11 w-11 items-center justify-center rounded-lg text-brand-brown hover:bg-brand-warm"
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 {open ? <path d="M6 6l12 12M18 6L6 18" /> : <><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></>}
