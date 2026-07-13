@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { href: '/admin/scents', label: 'Scents' },
   { href: '/admin/menu', label: 'Menu' },
   { href: '/admin/orders', label: 'Orders' },
+  { href: '/admin/reports', label: 'Reports' },
   { href: '/admin/campaigns', label: 'Campaigns' },
   { href: '/admin/order-forms', label: 'Paper Forms' },
   { href: '/admin/copy', label: 'Copy' },
