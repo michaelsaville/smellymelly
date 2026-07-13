@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, type ChangeEvent } from 'react'
+import { useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 
 interface CategoryTemplate {
@@ -35,6 +35,63 @@ interface Props {
   posHideOutOfStock: boolean
   categories: CategoryTemplate[]
   allergens: AllergenRow[]
+}
+
+/**
+ * Collapsible settings bucket. Module-scope (not defined inside SettingsForm) so
+ * its children — form inputs — keep focus across parent re-renders.
+ */
+function AccordionSection({
+  title,
+  filled,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string
+  filled: boolean
+  open: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  return (
+    <div className="card p-0 overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="w-full min-h-[56px] px-5 py-3 flex items-center justify-between text-left hover:bg-brand-warm/20"
+      >
+        <span className="flex items-center gap-2 font-display text-lg font-semibold text-brand-dark">
+          {title}
+          <span
+            className={`h-2 w-2 rounded-full ${filled ? 'bg-brand-terra' : 'bg-brand-warm'}`}
+            aria-hidden
+          />
+        </span>
+        <svg
+          className={`h-5 w-5 flex-shrink-0 text-brand-brown/50 transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && <div className="px-5 pb-5 pt-1 border-t border-brand-warm/40">{children}</div>}
+    </div>
+  )
+}
+
+/** Sub-heading for a section nested inside an accordion bucket. */
+function SubHeading({ title, children }: { title: string; children?: ReactNode }) {
+  return (
+    <>
+      <h3 className="font-display text-base font-semibold text-brand-dark mb-1">{title}</h3>
+      {children && <p className="text-xs text-brand-brown/60 mb-4">{children}</p>}
+    </>
+  )
 }
 
 export default function SettingsForm({
@@ -74,6 +131,46 @@ export default function SettingsForm({
   const [allergens, setAllergens] = useState<AllergenRow[]>(initialAllergens)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
+
+  // Accordion open state — first bucket open by default.
+  const [open, setOpen] = useState<Record<string, boolean>>({ store: true })
+  const toggle = (key: string) => setOpen((o) => ({ ...o, [key]: !o[key] }))
+
+  // Dirty tracking: serialize the editable fields and compare against the last
+  // saved baseline. Drives the sticky bar's saved/unsaved signal and disables
+  // Save when there's nothing to save. Logo uploads save immediately on their
+  // own, so they're excluded here.
+  const snapshotOf = (v: {
+    email: string; phone: string; venmo: string; cashApp: string; instructions: string
+    tax: string; disclaimer: string; annActive: boolean; annText: string; annLink: string
+    pos: boolean; cats: CategoryTemplate[]; alls: AllergenRow[]
+  }) => JSON.stringify(v)
+  const [savedSnapshot, setSavedSnapshot] = useState<string>(() =>
+    snapshotOf({
+      email: initialEmail, phone: initialPhone, venmo: initialVenmo, cashApp: initialCashApp,
+      instructions: initialInstructions, tax: String((initialTaxRate * 100).toFixed(2)),
+      disclaimer: initialDisclaimer, annActive: initialAnnounceActive, annText: initialAnnounceText,
+      annLink: initialAnnounceLink, pos: initialPosHideOOS, cats: initialCategories, alls: initialAllergens,
+    }),
+  )
+  const currentSnapshot = snapshotOf({
+    email: businessEmail, phone: businessPhone, venmo: venmoHandle, cashApp: cashAppTag,
+    instructions: paymentInstructions, tax: taxRatePct, disclaimer: productDisclaimer,
+    annActive: announcementActive, annText: announcementText, annLink: announcementLink,
+    pos: posHideOutOfStock, cats: categories, alls: allergens,
+  })
+  const dirty = currentSnapshot !== savedSnapshot
+
+  // Per-bucket "has content" dots.
+  const filled = {
+    store: !!logoUrl || !!businessEmail.trim() || !!businessPhone.trim(),
+    pay:
+      !!venmoHandle.trim() || !!cashAppTag.trim() || !!paymentInstructions.trim() ||
+      (Number(taxRatePct) || 0) > 0,
+    shop: announcementActive || !!announcementText.trim() || !!productDisclaimer.trim(),
+    products: categories.some((c) => c.baseIngredients.trim()) || allergens.length > 0,
+    pos: posHideOutOfStock,
+  }
 
   function updateCategoryIngredients(id: string, value: string) {
     setCategories((prev) =>
@@ -156,6 +253,7 @@ export default function SettingsForm({
     const pct = Number(taxRatePct)
     if (Number.isNaN(pct) || pct < 0 || pct > 100) {
       setError('Tax rate must be between 0 and 100')
+      setOpen((o) => ({ ...o, pay: true })) // reveal the offending field
       return
     }
     setStatus('saving')
@@ -194,6 +292,8 @@ export default function SettingsForm({
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Save failed')
+      // Baseline moves to what we just saved so the bar reads "saved" / clean.
+      setSavedSnapshot(currentSnapshot)
       setStatus('saved')
       setTimeout(() => setStatus('idle'), 1500)
       router.refresh()
@@ -204,35 +304,27 @@ export default function SettingsForm({
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-2xl space-y-4 pb-4">
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
           {error}
         </div>
       )}
 
-      <div className="card">
-        <h2 className="font-display text-lg font-semibold text-brand-dark mb-1">
-          Site logo
-        </h2>
-        <p className="text-xs text-brand-brown/60 mb-4">
+      {/* ── Store info ─────────────────────────────────────────────── */}
+      <AccordionSection title="Store info" filled={filled.store} open={!!open.store} onToggle={() => toggle('store')}>
+        <SubHeading title="Site logo">
           Shown on the public site header and footer, the admin nav, order
           emails, and printed forms. Leave empty to use the &ldquo;Smelly
           Melly&rdquo; wordmark instead. PNG, JPEG, WebP, or SVG up to 5 MB.
-        </p>
+        </SubHeading>
         <div className="flex items-center gap-4 flex-wrap">
           <div className="h-20 w-20 flex items-center justify-center rounded-lg border border-brand-warm/50 bg-brand-cream/40 overflow-hidden">
             {logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={logoUrl}
-                alt="Current logo"
-                className="h-full w-full object-contain"
-              />
+              <img src={logoUrl} alt="Current logo" className="h-full w-full object-contain" />
             ) : (
-              <span className="text-xs text-brand-brown/50 text-center px-1">
-                wordmark
-              </span>
+              <span className="text-xs text-brand-brown/50 text-center px-1">wordmark</span>
             )}
           </div>
           <div className="flex-1 min-w-[200px] space-y-2">
@@ -250,7 +342,7 @@ export default function SettingsForm({
                   type="button"
                   onClick={removeLogo}
                   disabled={logoBusy}
-                  className="text-sm text-red-700 hover:text-red-900 disabled:opacity-50"
+                  className="min-h-[44px] px-2 text-sm text-red-700 hover:text-red-900 disabled:opacity-50"
                 >
                   Remove
                 </button>
@@ -263,62 +355,49 @@ export default function SettingsForm({
               onChange={uploadLogo}
               className="hidden"
             />
-            {logoError && (
-              <p className="text-xs text-red-700">{logoError}</p>
-            )}
+            {logoError && <p className="text-xs text-red-700">{logoError}</p>}
           </div>
         </div>
-      </div>
 
-      <div className="card">
-        <h2 className="font-display text-lg font-semibold text-brand-dark mb-1">
-          Business contact
-        </h2>
-        <p className="text-xs text-brand-brown/60 mb-4">
-          Shown publicly on the Contact page and printed on product labels.
-          Update here and it changes everywhere it&apos;s posted.
-        </p>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs text-brand-brown/60 mb-1">
-              Contact email
-            </label>
-            <input
-              type="email"
-              value={businessEmail}
-              onChange={(e) => setBusinessEmail(e.target.value)}
-              placeholder="smellymellysinc@gmail.com"
-              className="input"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-brand-brown/60 mb-1">
-              Contact phone
-            </label>
-            <input
-              type="tel"
-              value={businessPhone}
-              onChange={(e) => setBusinessPhone(e.target.value)}
-              placeholder="240-362-9352"
-              className="input"
-            />
+        <div className="mt-6 pt-5 border-t border-brand-warm/40">
+          <SubHeading title="Business contact">
+            Shown publicly on the Contact page and printed on product labels.
+            Update here and it changes everywhere it&apos;s posted.
+          </SubHeading>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs text-brand-brown/60 mb-1">Contact email</label>
+              <input
+                type="email"
+                value={businessEmail}
+                onChange={(e) => setBusinessEmail(e.target.value)}
+                placeholder="smellymellysinc@gmail.com"
+                className="input"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-brand-brown/60 mb-1">Contact phone</label>
+              <input
+                type="tel"
+                value={businessPhone}
+                onChange={(e) => setBusinessPhone(e.target.value)}
+                placeholder="240-362-9352"
+                className="input"
+              />
+            </div>
           </div>
         </div>
-      </div>
+      </AccordionSection>
 
-      <div className="card">
-        <h2 className="font-display text-lg font-semibold text-brand-dark mb-1">
-          Manual payment handles
-        </h2>
-        <p className="text-xs text-brand-brown/60 mb-4">
+      {/* ── Payments & tax ─────────────────────────────────────────── */}
+      <AccordionSection title="Payments & tax" filled={filled.pay} open={!!open.pay} onToggle={() => toggle('pay')}>
+        <SubHeading title="Manual payment handles">
           Shown on the confirmation screen and email when a customer picks
           &quot;Pay directly via Venmo / Cash App&quot; at checkout.
-        </p>
+        </SubHeading>
         <div className="space-y-4">
           <div>
-            <label className="block text-xs text-brand-brown/60 mb-1">
-              Venmo handle
-            </label>
+            <label className="block text-xs text-brand-brown/60 mb-1">Venmo handle</label>
             <input
               type="text"
               value={venmoHandle}
@@ -328,9 +407,7 @@ export default function SettingsForm({
             />
           </div>
           <div>
-            <label className="block text-xs text-brand-brown/60 mb-1">
-              Cash App cashtag
-            </label>
+            <label className="block text-xs text-brand-brown/60 mb-1">Cash App cashtag</label>
             <input
               type="text"
               value={cashAppTag}
@@ -340,9 +417,7 @@ export default function SettingsForm({
             />
           </div>
           <div>
-            <label className="block text-xs text-brand-brown/60 mb-1">
-              Extra instructions (optional)
-            </label>
+            <label className="block text-xs text-brand-brown/60 mb-1">Extra instructions (optional)</label>
             <textarea
               value={paymentInstructions}
               onChange={(e) => setPaymentInstructions(e.target.value)}
@@ -352,92 +427,33 @@ export default function SettingsForm({
             />
           </div>
         </div>
-      </div>
 
-      <div className="card">
-        <h2 className="font-display text-lg font-semibold text-brand-dark mb-1">
-          Tax
-        </h2>
-        <p className="text-xs text-brand-brown/60 mb-4">
-          Applied to every order&apos;s subtotal at checkout. Currently flat
-          for all states — per-state rates are future work.
-        </p>
-        <div>
-          <label className="block text-xs text-brand-brown/60 mb-1">
-            Tax rate (%)
-          </label>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            max="100"
-            value={taxRatePct}
-            onChange={(e) => setTaxRatePct(e.target.value)}
-            className="input max-w-[160px]"
-          />
-        </div>
-      </div>
-
-      <div className="card">
-        <h2 className="font-display text-lg font-semibold text-brand-dark mb-1">
-          Category ingredient templates
-        </h2>
-        <p className="text-xs text-brand-brown/60 mb-4">
-          Shared base recipe for every product in a category — Body Butter,
-          Lip Balm, etc. Shown in the Ingredients & Disclosure box on each
-          product page. Per-product extras still go on the product itself.
-        </p>
-        {categories.length === 0 ? (
-          <p className="text-sm text-brand-brown/60">
-            No categories yet. Add some, then come back to fill in templates.
-          </p>
-        ) : (
-          <div className="space-y-4">
-            {categories.map((c) => (
-              <div key={c.id}>
-                <label className="block text-xs text-brand-brown/60 mb-1">
-                  {c.name}
-                </label>
-                <textarea
-                  value={c.baseIngredients}
-                  onChange={(e) =>
-                    updateCategoryIngredients(c.id, e.target.value)
-                  }
-                  rows={3}
-                  placeholder="e.g. Shea butter, mango butter, jojoba oil, vitamin E, fragrance oil"
-                  className="input resize-y"
-                />
-              </div>
-            ))}
+        <div className="mt-6 pt-5 border-t border-brand-warm/40">
+          <SubHeading title="Tax">
+            Applied to every order&apos;s subtotal at checkout. Currently flat
+            for all states — per-state rates are future work.
+          </SubHeading>
+          <div>
+            <label className="block text-xs text-brand-brown/60 mb-1">Tax rate (%)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              max="100"
+              value={taxRatePct}
+              onChange={(e) => setTaxRatePct(e.target.value)}
+              className="input max-w-[160px]"
+            />
           </div>
-        )}
-      </div>
+        </div>
+      </AccordionSection>
 
-      <div className="card">
-        <h2 className="font-display text-lg font-semibold text-brand-dark mb-1">
-          Product disclaimer
-        </h2>
-        <p className="text-xs text-brand-brown/60 mb-4">
-          Legal blurb appended to every product&apos;s Ingredients & Disclosure
-          box — allergen warnings, FDA disclaimer, patch-test reminder, etc.
-        </p>
-        <textarea
-          value={productDisclaimer}
-          onChange={(e) => setProductDisclaimer(e.target.value)}
-          rows={5}
-          placeholder="Handmade in small batches. May contain nuts, shea, beeswax, essential oils…"
-          className="input resize-y"
-        />
-      </div>
-
-      <div className="card">
-        <h2 className="font-display text-lg font-semibold text-brand-dark mb-1">
-          Announcement banner
-        </h2>
-        <p className="text-xs text-brand-brown/60 mb-4">
+      {/* ── Storefront ─────────────────────────────────────────────── */}
+      <AccordionSection title="Storefront" filled={filled.shop} open={!!open.shop} onToggle={() => toggle('shop')}>
+        <SubHeading title="Announcement banner">
           A colored bar across the top of every storefront page. Use it for sales,
           shipping cutoffs, or holiday hours. Turn it off to hide it.
-        </p>
+        </SubHeading>
         <label className="flex items-center gap-2 mb-4">
           <input
             type="checkbox"
@@ -458,30 +474,133 @@ export default function SettingsForm({
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-brand-brown mb-1">
-              Link (optional)
-            </label>
+            <label className="block text-sm font-medium text-brand-brown mb-1">Link (optional)</label>
             <input
               value={announcementLink}
               onChange={(e) => setAnnouncementLink(e.target.value)}
               placeholder="/shop or https://…"
               className="input w-full"
             />
-            <p className="mt-1 text-xs text-brand-brown/50">
-              When set, the whole banner links here.
-            </p>
+            <p className="mt-1 text-xs text-brand-brown/50">When set, the whole banner links here.</p>
           </div>
         </div>
-      </div>
 
-      <div className="card">
-        <h2 className="font-display text-lg font-semibold text-brand-dark mb-1">
-          Point of Sale
-        </h2>
-        <p className="text-xs text-brand-brown/60 mb-4">
+        <div className="mt-6 pt-5 border-t border-brand-warm/40">
+          <SubHeading title="Product disclaimer">
+            Legal blurb appended to every product&apos;s Ingredients & Disclosure
+            box — allergen warnings, FDA disclaimer, patch-test reminder, etc.
+          </SubHeading>
+          <textarea
+            value={productDisclaimer}
+            onChange={(e) => setProductDisclaimer(e.target.value)}
+            rows={5}
+            placeholder="Handmade in small batches. May contain nuts, shea, beeswax, essential oils…"
+            className="input resize-y"
+          />
+        </div>
+      </AccordionSection>
+
+      {/* ── Products ───────────────────────────────────────────────── */}
+      <AccordionSection title="Products" filled={filled.products} open={!!open.products} onToggle={() => toggle('products')}>
+        <SubHeading title="Category ingredient templates">
+          Shared base recipe for every product in a category — Body Butter,
+          Lip Balm, etc. Shown in the Ingredients & Disclosure box on each
+          product page. Per-product extras still go on the product itself.
+        </SubHeading>
+        {categories.length === 0 ? (
+          <p className="text-sm text-brand-brown/60">
+            No categories yet. Add some, then come back to fill in templates.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {categories.map((c) => (
+              <div key={c.id}>
+                <label className="block text-xs text-brand-brown/60 mb-1">{c.name}</label>
+                <textarea
+                  value={c.baseIngredients}
+                  onChange={(e) => updateCategoryIngredients(c.id, e.target.value)}
+                  rows={3}
+                  placeholder="e.g. Shea butter, mango butter, jojoba oil, vitamin E, fragrance oil"
+                  className="input resize-y"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-6 pt-5 border-t border-brand-warm/40">
+          <SubHeading title="Allergen pills">
+            Each row is a pill that lights up on a product page when its match
+            terms appear in the recipe text. <strong>Match</strong> is one or
+            more comma-separated words (case-insensitive, whole-word only).
+            <strong> High</strong> = red pill, <strong>Normal</strong> = amber.
+            Uncheck Active to hide a pill without deleting it.
+          </SubHeading>
+          <div className="space-y-2">
+            <div className="hidden sm:grid grid-cols-12 gap-2 text-[11px] uppercase tracking-wide text-brand-brown/50 px-1">
+              <div className="col-span-3">Label</div>
+              <div className="col-span-5">Match (comma-separated)</div>
+              <div className="col-span-2">Severity</div>
+              <div className="col-span-1 text-center">Active</div>
+              <div className="col-span-1"></div>
+            </div>
+            {allergens.length === 0 && (
+              <p className="text-sm text-brand-brown/60">No allergens yet.</p>
+            )}
+            {allergens.map((a) => (
+              <div key={a.id} className="grid grid-cols-12 gap-2 items-center">
+                <input
+                  type="text"
+                  value={a.label}
+                  onChange={(e) => updateAllergen(a.id, 'label', e.target.value)}
+                  placeholder="Shea"
+                  className="input col-span-12 sm:col-span-3"
+                />
+                <input
+                  type="text"
+                  value={a.matchTerms}
+                  onChange={(e) => updateAllergen(a.id, 'matchTerms', e.target.value)}
+                  placeholder="shea, shea butter"
+                  className="input col-span-12 sm:col-span-5"
+                />
+                <select
+                  value={a.severity}
+                  onChange={(e) => updateAllergen(a.id, 'severity', e.target.value as AllergenSeverity)}
+                  className="input col-span-6 sm:col-span-2"
+                >
+                  <option value="normal">Normal</option>
+                  <option value="high">High</option>
+                </select>
+                <label className="col-span-3 sm:col-span-1 flex items-center justify-center text-xs text-brand-brown/70">
+                  <input
+                    type="checkbox"
+                    checked={a.isActive}
+                    onChange={(e) => updateAllergen(a.id, 'isActive', e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => removeAllergen(a.id)}
+                  className="col-span-3 sm:col-span-1 min-h-[44px] text-xs text-red-700 hover:text-red-900"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={addAllergen} className="btn-secondary text-sm mt-4">
+            + Add allergen
+          </button>
+        </div>
+      </AccordionSection>
+
+      {/* ── Point of sale ──────────────────────────────────────────── */}
+      <AccordionSection title="Point of sale" filled={filled.pos} open={!!open.pos} onToggle={() => toggle('pos')}>
+        <SubHeading title="New Sale catalog">
           Options for the New Sale ring-up screen. This can also be toggled directly
           on the POS while you work.
-        </p>
+        </SubHeading>
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -493,108 +612,33 @@ export default function SettingsForm({
             Hide out-of-stock items from the New Sale catalog
           </span>
         </label>
-      </div>
+      </AccordionSection>
 
-      <div className="card">
-        <h2 className="font-display text-lg font-semibold text-brand-dark mb-1">
-          Allergen pills
-        </h2>
-        <p className="text-xs text-brand-brown/60 mb-4">
-          Each row is a pill that lights up on a product page when its match
-          terms appear in the recipe text. <strong>Match</strong> is one or
-          more comma-separated words (case-insensitive, whole-word only).
-          <strong> High</strong> = red pill, <strong>Normal</strong> = amber.
-          Uncheck Active to hide a pill without deleting it.
-        </p>
-        <div className="space-y-2">
-          <div className="hidden sm:grid grid-cols-12 gap-2 text-[11px] uppercase tracking-wide text-brand-brown/50 px-1">
-            <div className="col-span-3">Label</div>
-            <div className="col-span-5">Match (comma-separated)</div>
-            <div className="col-span-2">Severity</div>
-            <div className="col-span-1 text-center">Active</div>
-            <div className="col-span-1"></div>
-          </div>
-          {allergens.length === 0 && (
-            <p className="text-sm text-brand-brown/60">No allergens yet.</p>
-          )}
-          {allergens.map((a) => (
-            <div
-              key={a.id}
-              className="grid grid-cols-12 gap-2 items-center"
-            >
-              <input
-                type="text"
-                value={a.label}
-                onChange={(e) => updateAllergen(a.id, 'label', e.target.value)}
-                placeholder="Shea"
-                className="input col-span-12 sm:col-span-3"
-              />
-              <input
-                type="text"
-                value={a.matchTerms}
-                onChange={(e) =>
-                  updateAllergen(a.id, 'matchTerms', e.target.value)
-                }
-                placeholder="shea, shea butter"
-                className="input col-span-12 sm:col-span-5"
-              />
-              <select
-                value={a.severity}
-                onChange={(e) =>
-                  updateAllergen(
-                    a.id,
-                    'severity',
-                    e.target.value as AllergenSeverity,
-                  )
-                }
-                className="input col-span-6 sm:col-span-2"
-              >
-                <option value="normal">Normal</option>
-                <option value="high">High</option>
-              </select>
-              <label className="col-span-3 sm:col-span-1 flex items-center justify-center text-xs text-brand-brown/70">
-                <input
-                  type="checkbox"
-                  checked={a.isActive}
-                  onChange={(e) =>
-                    updateAllergen(a.id, 'isActive', e.target.checked)
-                  }
-                  className="h-4 w-4"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={() => removeAllergen(a.id)}
-                className="col-span-3 sm:col-span-1 text-xs text-red-700 hover:text-red-900"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
+      {/* Sticky save bar — always reachable; signals saved / unsaved. */}
+      <div className="sticky bottom-4 z-20 pt-2">
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-brand-warm/60 bg-white/95 backdrop-blur px-4 py-3 shadow-md">
+          <span className="text-xs">
+            {status === 'saving' ? (
+              <span className="text-brand-brown/60">Saving…</span>
+            ) : status === 'error' ? (
+              <span className="text-red-600 font-medium">Save failed</span>
+            ) : status === 'saved' ? (
+              <span className="text-brand-terra font-medium">Saved ✓</span>
+            ) : dirty ? (
+              <span className="text-brand-terra font-medium">Unsaved changes</span>
+            ) : (
+              <span className="text-brand-brown/50">All changes saved</span>
+            )}
+          </span>
+          <button
+            type="button"
+            onClick={save}
+            disabled={status === 'saving' || !dirty}
+            className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {status === 'saving' ? 'Saving…' : 'Save changes'}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={addAllergen}
-          className="btn-secondary text-sm mt-4"
-        >
-          + Add allergen
-        </button>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-brand-brown/50">
-          {status === 'saving' && 'Saving…'}
-          {status === 'saved' && 'Saved'}
-          {status === 'error' && 'Save failed'}
-        </span>
-        <button
-          type="button"
-          onClick={save}
-          disabled={status === 'saving'}
-          className="btn-primary disabled:opacity-50"
-        >
-          Save settings
-        </button>
       </div>
     </div>
   )
