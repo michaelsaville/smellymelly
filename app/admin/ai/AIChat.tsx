@@ -17,6 +17,14 @@ export default function AIChat() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
+  // ── Dictation (Web Speech API) ──────────────────────────────────────────
+  const [listening, setListening] = useState(false)
+  const [speechSupported, setSpeechSupported] = useState(true)
+  const recognitionRef = useRef<any>(null)
+  // Text already in the box before the current dictation started, so we
+  // append speech instead of clobbering anything Mel typed by hand.
+  const baseTextRef = useRef('')
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
@@ -24,6 +32,67 @@ export default function AIChat() {
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
+
+  useEffect(() => {
+    const SR =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition
+    if (!SR) {
+      setSpeechSupported(false)
+      return
+    }
+    const rec = new SR()
+    rec.continuous = true
+    rec.interimResults = true
+    rec.lang = 'en-US'
+
+    rec.onresult = (e: any) => {
+      let finalTxt = ''
+      let interim = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript
+        if (e.results[i].isFinal) finalTxt += t
+        else interim += t
+      }
+      if (finalTxt) {
+        baseTextRef.current = (baseTextRef.current + ' ' + finalTxt).trim()
+      }
+      setInput((baseTextRef.current + ' ' + interim).trim())
+    }
+    rec.onerror = (e: any) => {
+      setListening(false)
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        setError('Microphone blocked. Allow mic access in your browser settings, then try again.')
+      }
+    }
+    // Fires when Mel taps stop OR when iOS Safari auto-ends the session.
+    rec.onend = () => setListening(false)
+
+    recognitionRef.current = rec
+    return () => {
+      try {
+        rec.abort()
+      } catch {}
+    }
+  }, [])
+
+  function toggleMic() {
+    const rec = recognitionRef.current
+    if (!rec) return
+    if (listening) {
+      rec.stop()
+      return
+    }
+    baseTextRef.current = input // preserve whatever is already typed
+    setError(null)
+    try {
+      rec.start()
+      setListening(true)
+      inputRef.current?.focus()
+    } catch {
+      // start() throws if a session is somehow already running — ignore.
+    }
+  }
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault()
@@ -158,11 +227,31 @@ export default function AIChat() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Tell me what you need..."
+          placeholder={listening ? 'Listening — start talking…' : 'Tell me what you need, or tap the mic to talk…'}
           rows={1}
           className="input flex-1 resize-none py-3"
           disabled={loading}
         />
+        {speechSupported && (
+          <button
+            type="button"
+            onClick={toggleMic}
+            disabled={loading}
+            aria-label={listening ? 'Stop dictation' : 'Start dictation'}
+            title={listening ? 'Stop dictation' : 'Tap to talk'}
+            className={`self-end flex h-12 w-12 shrink-0 items-center justify-center rounded-full border text-lg transition-colors disabled:opacity-50 ${
+              listening
+                ? 'animate-pulse border-red-500 bg-red-500 text-white'
+                : 'border-brand-warm bg-white text-brand-brown hover:bg-brand-warm/50'
+            }`}
+          >
+            {listening ? (
+              <span aria-hidden>&#x25a0;</span>
+            ) : (
+              <span aria-hidden>&#x1f3a4;</span>
+            )}
+          </button>
+        )}
         <button
           type="submit"
           disabled={loading || !input.trim()}
