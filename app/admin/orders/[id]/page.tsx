@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { requireAdmin } from '@/app/lib/admin-auth'
 import { prisma } from '@/app/lib/prisma'
 import { isEasyPostConfigured } from '@/app/lib/easypost'
+import { parseVariantScent } from '@/app/lib/scent-resolver'
 import OrderActions from './OrderActions'
 
 export const dynamic = 'force-dynamic'
@@ -93,6 +94,18 @@ export default async function OrderDetailPage({
             <div className="divide-y divide-brand-warm/40">
               {order.items.map((item) => {
                 const image = item.variant.product.images[0]
+                const scent = parseVariantScent(item.variantName)
+                const hasScent = !!scent && scent.toLowerCase() !== 'standard'
+                const sizeIdx = item.variantName.lastIndexOf(' - ')
+                // "Scent - Size" → show the size on the muted line and the
+                // scent on its own prominent line. Otherwise fall back to the
+                // raw variant name on the muted line.
+                const detail =
+                  hasScent && sizeIdx >= 0 && scent !== item.variantName.trim()
+                    ? item.variantName.slice(sizeIdx + 3).trim()
+                    : hasScent
+                      ? ''
+                      : item.variantName
                 return (
                   <div key={item.id} className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
                     <div className="h-14 w-14 flex-shrink-0 rounded-lg bg-surface-muted overflow-hidden">
@@ -109,10 +122,18 @@ export default async function OrderDetailPage({
                       <div className="font-medium text-brand-dark">
                         {item.productName}
                       </div>
-                      <div className="text-xs text-brand-brown/60">
-                        {item.variantName}
-                        {item.variant.sku ? ` · SKU ${item.variant.sku}` : ''}
-                      </div>
+                      {hasScent && (
+                        <div className="text-sm font-semibold text-brand-terra">
+                          Scent: {scent}
+                        </div>
+                      )}
+                      {(detail || item.variant.sku) && (
+                        <div className="text-xs text-brand-brown/60">
+                          {[detail, item.variant.sku ? `SKU ${item.variant.sku}` : '']
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </div>
+                      )}
                     </div>
                     <div className="text-sm text-brand-brown/70 tabular-nums">
                       {item.quantity} × {money(item.unitCents)}
