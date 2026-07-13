@@ -5,7 +5,6 @@ import { sendShippingNotification } from '@/app/lib/email'
 import { recomputeCustomerStats } from '@/app/lib/customers'
 import { getStripe, isStripeConfigured } from '@/app/lib/stripe'
 import { getSquareClient, isSquareConfigured } from '@/app/lib/square'
-import { randomUUID } from 'crypto'
 import type { SM_OrderStatus } from '@prisma/client'
 
 const TERMINAL = new Set<SM_OrderStatus>(['CANCELLED', 'REFUNDED'])
@@ -101,8 +100,10 @@ export async function PATCH(
           { idempotencyKey: `refund_${existing.stripePaymentIntentId}` },
         )
       } else if (existing.squarePaymentId && isSquareConfigured()) {
+        // Deterministic key so a retry after a post-refund DB failure returns
+        // the same refund instead of issuing a second one (mirrors Stripe above).
         await getSquareClient().refunds.refundPayment({
-          idempotencyKey: randomUUID(),
+          idempotencyKey: `refund_${existing.squarePaymentId}`,
           paymentId: existing.squarePaymentId,
         } as never)
       }
