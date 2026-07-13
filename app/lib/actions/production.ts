@@ -3,7 +3,7 @@
 import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { prisma } from '@/app/lib/prisma'
-import { convert } from '@/app/lib/units'
+import { convert, materialItemCost } from '@/app/lib/units'
 
 async function requireAdmin(): Promise<void> {
   const cookieStore = await cookies()
@@ -33,7 +33,9 @@ export async function makeBatch(input: {
         select: {
           quantity: true,
           unit: true,
-          material: { select: { id: true, packageUnit: true } },
+          material: {
+            select: { id: true, name: true, packageUnit: true, packageCostCents: true, packageSize: true, onHand: true },
+          },
         },
       },
     },
@@ -46,27 +48,53 @@ export async function makeBatch(input: {
   })
   if (!variant) return { ok: false, error: 'Pick a variant to add stock to.' }
 
-  const added = Math.max(1, recipe.yields) * batches
+  const yields = Math.max(1, recipe.yields)
+  const added = yields * batches
 
-  // Increment finished stock and deduct the materials used, atomically.
+  // --- Preflight: verify every material is convertible AND in stock BEFORE we
+  // mutate anything. Previously a unit mismatch was silently skipped (material
+  // never deducted) and onHand could go negative with no warning. ---
+  const mismatches: string[] = []
+  const shortfalls: string[] = []
+  const deductions: { materialId: string; amount: number }[] = []
+  let batchCostCents = 0 // material cost for ONE batch (for per-unit COGS)
+
+  for (const it of recipe.items) {
+    let usedPerBatch: number
+    try {
+      usedPerBatch = convert(it.quantity, it.unit, it.material.packageUnit)
+    } catch {
+      mismatches.push(`${it.material.name} (recipe uses ${it.unit}, purchased in ${it.material.packageUnit})`)
+      continue
+    }
+    const needed = usedPerBatch * batches
+    if (it.material.onHand < needed) {
+      shortfalls.push(`${it.material.name} (need ${needed.toFixed(2)} ${it.material.packageUnit}, have ${it.material.onHand.toFixed(2)})`)
+    }
+    deductions.push({ materialId: it.material.id, amount: needed })
+    batchCostCents += materialItemCost(
+      it.material.packageCostCents, it.material.packageSize, it.material.packageUnit, it.quantity, it.unit,
+    )
+  }
+
+  if (mismatches.length) {
+    return { ok: false, error: `Can't cost/deduct these materials — unit mismatch: ${mismatches.join('; ')}. Fix the recipe units first.` }
+  }
+  if (shortfalls.length) {
+    return { ok: false, error: `Not enough material on hand: ${shortfalls.join('; ')}.` }
+  }
+
+  const unitCostCents = Math.round(batchCostCents / yields) // COGS per finished unit
+
+  // Increment finished stock, deduct materials, and persist COGS — atomically.
   const updated = await prisma.$transaction(async (tx) => {
     const v = await tx.sM_ProductVariant.update({
       where: { id: variant.id },
-      data: { stockQuantity: { increment: added } },
+      data: { stockQuantity: { increment: added }, costCents: unitCostCents },
       select: { stockQuantity: true },
     })
-    for (const it of recipe.items) {
-      let usedInPkgUnit: number
-      try {
-        usedInPkgUnit = convert(it.quantity, it.unit, it.material.packageUnit) * batches
-      } catch {
-        // Unit types don't match (weight vs volume) — can't deduct; skip.
-        continue
-      }
-      await tx.sM_Material.update({
-        where: { id: it.material.id },
-        data: { onHand: { decrement: usedInPkgUnit } },
-      })
+    for (const d of deductions) {
+      await tx.sM_Material.update({ where: { id: d.materialId }, data: { onHand: { decrement: d.amount } } })
     }
     return v
   })

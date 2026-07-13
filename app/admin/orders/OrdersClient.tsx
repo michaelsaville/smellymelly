@@ -136,11 +136,15 @@ export default function OrdersClient({
   }
 
   async function changeStatus(ids: string[], status: SM_OrderStatus) {
-    if (
-      (status === 'CANCELLED' || status === 'REFUNDED') &&
-      !confirm(`Set ${ids.length} order${ids.length > 1 ? 's' : ''} to ${status.toLowerCase()}?`)
-    ) {
-      return
+    // Confirm destructive/side-effecting changes: cancel/refund (irreversible +
+    // now issues a real refund + restocks), SHIPPED (emails every customer), or
+    // any bulk change across >1 order.
+    const emails = status === 'SHIPPED'
+    const destructive = status === 'CANCELLED' || status === 'REFUNDED'
+    if (destructive || emails || ids.length > 1) {
+      const n = ids.length
+      const suffix = emails ? ' This emails a shipping notice to each customer.' : ''
+      if (!confirm(`Set ${n} order${n > 1 ? 's' : ''} to ${status.toLowerCase()}?${suffix}`)) return
     }
     setBusy(true)
     const res = await setOrdersStatus(ids, status)

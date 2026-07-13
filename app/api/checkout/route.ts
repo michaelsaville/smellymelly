@@ -27,6 +27,30 @@ interface CheckoutBody {
   giftMessage?: string
 }
 
+// The Stripe card is confirmed (charged) client-side BEFORE this route runs. If
+// anything server-side then fails (stock ran out, DB error), we must return the
+// money — otherwise the buyer is charged with no order. Best-effort; logs on failure.
+async function autoRefund(opts: { stripePaymentIntentId?: string | null; squarePaymentId?: string | null }) {
+  if (opts.stripePaymentIntentId && isStripeConfigured()) {
+    try {
+      await getStripe().refunds.create({ payment_intent: opts.stripePaymentIntentId })
+    } catch (e) {
+      console.error(`[refund] Stripe auto-refund failed for ${opts.stripePaymentIntentId}:`, e)
+    }
+  }
+  if (opts.squarePaymentId && isSquareConfigured()) {
+    try {
+      await getSquareClient().refunds.refundPayment({
+        idempotencyKey: randomUUID(),
+        paymentId: opts.squarePaymentId,
+        amountMoney: undefined as never, // full refund
+      } as never)
+    } catch (e) {
+      console.error(`[refund] Square auto-refund failed for ${opts.squarePaymentId}:`, e)
+    }
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as CheckoutBody
@@ -96,7 +120,13 @@ export async function POST(req: NextRequest) {
       shippingCentsOverride: body.shippingCentsOverride,
     })
     if (!computed.ok) {
-      return NextResponse.json({ error: computed.error }, { status: computed.status })
+      // The Stripe card was already charged client-side — refund it so the
+      // buyer isn't charged for an order we're about to reject (e.g. sold out).
+      await autoRefund({ stripePaymentIntentId: body.stripePaymentIntentId })
+      const msg = body.stripePaymentIntentId
+        ? `${computed.error} Your card was not charged (payment reversed).`
+        : computed.error
+      return NextResponse.json({ error: msg }, { status: computed.status })
     }
     const { orderItems, subtotalCents, shippingCents, taxCents, totalCents } = computed.data
 
@@ -162,14 +192,21 @@ export async function POST(req: NextRequest) {
     const paidNow = !!squarePaymentId || !!stripePaymentIntentId
 
     // --- Create order + items + deduct stock in a transaction ---
-    const order = await prisma.$transaction(async (tx) => {
-      // Deduct stock
-      for (const item of body.items) {
-        await tx.sM_ProductVariant.update({
-          where: { id: item.variantId },
-          data: { stockQuantity: { decrement: item.quantity } },
-        })
-      }
+    // Conditional decrement (updateMany WHERE stockQuantity >= qty) closes the
+    // TOCTOU race between computeCheckout's check and the write — a concurrent
+    // order can't push stock negative. If any line fails, the whole txn rolls back.
+    let order
+    try {
+      order = await prisma.$transaction(async (tx) => {
+        for (const item of body.items) {
+          const res = await tx.sM_ProductVariant.updateMany({
+            where: { id: item.variantId, stockQuantity: { gte: item.quantity } },
+            data: { stockQuantity: { decrement: item.quantity } },
+          })
+          if (res.count !== 1) {
+            throw new Error('OUT_OF_STOCK')
+          }
+        }
 
       // Create order with items
       const created = await tx.sM_Order.create({
@@ -207,8 +244,23 @@ export async function POST(req: NextRequest) {
         },
       })
 
-      return created
-    })
+        return created
+      })
+    } catch (txErr) {
+      // Oversold in the race window (or a DB error) after the card was charged —
+      // reverse the payment so we never keep money without an order.
+      await autoRefund({ stripePaymentIntentId, squarePaymentId })
+      const soldOut = txErr instanceof Error && txErr.message === 'OUT_OF_STOCK'
+      console.error('Checkout transaction failed:', txErr)
+      return NextResponse.json(
+        {
+          error: soldOut
+            ? 'Sorry — an item just sold out. Your card was not charged (payment reversed).'
+            : 'We could not complete your order. Your card was not charged (payment reversed).',
+        },
+        { status: soldOut ? 409 : 500 },
+      )
+    }
 
     // Link to a customer row (dedupe by email) + refresh denormalized stats.
     // Awaited so the customer is queryable immediately after checkout, but

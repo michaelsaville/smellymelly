@@ -1,13 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
 
+// Simple in-memory per-IP rate limit (long-lived standalone server). 5 reviews
+// per IP per 10 min — plenty for a real shopper, tight against spam floods.
+const RL = new Map<string, number[]>()
+function rateLimited(ip: string): boolean {
+  const now = Date.now()
+  const win = 10 * 60 * 1000
+  const hits = (RL.get(ip) ?? []).filter((t) => now - t < win)
+  hits.push(now)
+  RL.set(ip, hits)
+  if (RL.size > 5000) RL.clear() // crude memory cap
+  return hits.length > 5
+}
+
 // Public review submission. Lands unapproved; Mel approves in /admin/reviews.
 export async function POST(req: NextRequest) {
-  let body: { productId?: string; authorName?: string; rating?: number; title?: string; body?: string }
+  let body: { productId?: string; authorName?: string; rating?: number; title?: string; body?: string; website?: string }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'Bad request.' }, { status: 400 })
+  }
+
+  // Honeypot: real users never see/fill `website`. Bots that bulk-fill trip it;
+  // silently accept so they don't learn they were filtered.
+  if (body.website && String(body.website).trim() !== '') {
+    return NextResponse.json({ ok: true })
+  }
+
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+  if (rateLimited(ip)) {
+    return NextResponse.json({ error: 'Too many reviews too quickly. Please try again later.' }, { status: 429 })
   }
 
   const productId = String(body.productId ?? '')
