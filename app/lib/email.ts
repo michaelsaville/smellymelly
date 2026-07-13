@@ -362,3 +362,24 @@ ${input.message}`
   )
   await send({ to: CONTACT_INBOX, subject, text, html, replyTo: input.email })
 }
+
+/**
+ * Operational alert to the store owner (not a customer). Used for things that
+ * need a human to look — e.g. a Stripe webhook seeing a captured payment with
+ * no matching order. Best-effort: if SMTP isn't configured it just logs.
+ */
+export async function sendAdminAlert(input: {
+  subject: string
+  lines: string[]
+}): Promise<void> {
+  if (!CONTACT_INBOX) {
+    console.warn(`[email] no admin inbox configured; alert dropped: ${input.subject}`)
+    return
+  }
+  const text = input.lines.join('\n')
+  const html = await wrap(
+    input.subject,
+    input.lines.map((l) => `<p style="margin:6px 0">${escapeHtml(l)}</p>`).join(''),
+  )
+  await send({ to: CONTACT_INBOX, subject: `[Smelly Melly] ${input.subject}`, text, html })
+}

@@ -8,7 +8,7 @@ export const config = {
     // always serve (favicon resizer, public settings shape for the nav
     // logo). Everything else passes through and the logic below decides
     // what to do.
-    '/((?!_next/|favicon.ico|robots.txt|sitemap.xml|uploads/|api/uploads/|api/favicon/|api/settings/public).*)',
+    '/((?!_next/|favicon.ico|robots.txt|sitemap.xml|uploads/|api/uploads/|api/favicon/|api/settings/public|api/webhooks/).*)',
   ],
 }
 
