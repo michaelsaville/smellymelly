@@ -15,6 +15,8 @@ interface AddToCartProps {
   productName: string
   productSlug: string
   imageUrl: string | null
+  /** Scent to pre-select, e.g. from a /scent-finder deep-link (?scent=...) */
+  preselectScent?: string | null
 }
 
 function formatPrice(cents: number) {
@@ -41,7 +43,7 @@ function sizeWeight(size: string): number {
 
 type Parsed = Variant & { scent: string; size: string }
 
-export default function AddToCart({ variants, productName, productSlug, imageUrl }: AddToCartProps) {
+export default function AddToCart({ variants, productName, productSlug, imageUrl, preselectScent }: AddToCartProps) {
   const parsed = useMemo<Parsed[]>(
     () => variants.map((v) => ({ ...v, ...parseVariant(v.name) })),
     [variants],
@@ -55,9 +57,19 @@ export default function AddToCart({ variants, productName, productSlug, imageUrl
 
   const showSizeDropdown = sizes.length > 1
 
+  // A ?scent= deep-link (from the scent finder) pre-selects that scent, preferring
+  // an in-stock variant. Falls back to the first in-stock variant otherwise.
+  const preselected = useMemo<Parsed | undefined>(() => {
+    if (!preselectScent) return undefined
+    const want = preselectScent.trim().toLowerCase()
+    const matches = parsed.filter((p) => p.scent.toLowerCase() === want)
+    return matches.find((p) => p.stockQuantity > 0) ?? matches[0]
+  }, [parsed, preselectScent])
+
   const firstInStock = parsed.find((v) => v.stockQuantity > 0)
-  const initialSize = firstInStock?.size ?? sizes[0] ?? ''
-  const initialScent = firstInStock?.scent ?? null
+  const seed = preselected ?? firstInStock
+  const initialSize = seed?.size ?? sizes[0] ?? ''
+  const initialScent = seed?.scent ?? null
 
   const [size, setSize] = useState<string>(initialSize)
   const [scent, setScent] = useState<string | null>(initialScent)

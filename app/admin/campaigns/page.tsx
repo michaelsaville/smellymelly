@@ -87,7 +87,7 @@ export default async function CampaignsListPage() {
           </Link>
         </div>
       ) : (
-        <div className="mt-8 overflow-hidden rounded-lg border border-brand-warm/40 bg-white">
+        <div className="mt-8 overflow-x-auto rounded-lg border border-brand-warm/40 bg-white">
           <table className="w-full text-sm">
             <thead className="bg-brand-warm/20 text-left text-xs uppercase tracking-wider text-brand-brown/60">
               <tr>

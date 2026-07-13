@@ -73,7 +73,7 @@ export default async function ProductionPage() {
             You&apos;re caught up — every open order has enough stock. 🎉
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-brand-warm/60">
+          <div className="overflow-x-auto rounded-xl border border-brand-warm/60">
             <table className="w-full text-sm">
               <thead className="bg-brand-cream text-left text-xs font-medium uppercase tracking-wider text-brand-brown/60">
                 <tr>

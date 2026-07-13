@@ -7,7 +7,7 @@ type ProductCardProduct = {
   scent: string | null
   category: { name: string } | null
   images: { url: string; altText: string | null }[]
-  variants: { priceCents: number }[]
+  variants: { priceCents: number; stockQuantity?: number }[]
 }
 
 function formatPrice(cents: number): string {
@@ -36,12 +36,26 @@ export default function ProductCard({
   const minPrice = prices.length > 0 ? Math.min(...prices) : null
   const maxPrice = prices.length > 0 ? Math.max(...prices) : null
 
+  // Stock-based urgency: sum sellable stock across variants (undefined = not tracked)
+  const tracked = product.variants.filter((v) => typeof v.stockQuantity === 'number')
+  const totalStock = tracked.reduce((sum, v) => sum + (v.stockQuantity ?? 0), 0)
+  const stockBadge =
+    tracked.length === 0 ? null
+    : totalStock <= 0 ? { label: 'Sold Out', className: 'bg-brand-brown/70 text-white' }
+    : totalStock <= 5 ? { label: `Only ${totalStock} left`, className: 'bg-brand-terra text-white' }
+    : null
+
   return (
     <Link
       href={`/shop/${product.slug}`}
       className="card p-0 overflow-hidden hover:border-brand-terra/40 hover:shadow-md transition-all group"
     >
       <div className="aspect-square relative bg-gradient-to-br from-brand-peach/30 to-brand-warm overflow-hidden">
+        {stockBadge && (
+          <span className={`absolute top-2 left-2 z-10 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm ${stockBadge.className}`}>
+            {stockBadge.label}
+          </span>
+        )}
         {image ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img

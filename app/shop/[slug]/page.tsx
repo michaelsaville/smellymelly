@@ -52,10 +52,13 @@ export async function generateMetadata({
 
 export default async function ProductPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>
+  searchParams: Promise<{ scent?: string }>
 }) {
   const { slug } = await params
+  const { scent: preselectScent } = await searchParams
 
   const [product, settings] = await Promise.all([
     prisma.sM_Product.findFirst({
@@ -281,6 +284,7 @@ export default async function ProductPage({
                 productName={product.name}
                 productSlug={product.slug}
                 imageUrl={mainImage?.url ?? null}
+                preselectScent={preselectScent ?? null}
               />
             </div>
           </div>

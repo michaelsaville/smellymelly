@@ -122,8 +122,7 @@ export function InventoryTable({ variants }: { variants: VariantRow[] }) {
   const filtersActive =
     search.trim() !== '' || categoryFilter !== '' || stockFilter !== 'all'
 
-  async function handleAdjust(id: string) {
-    const qty = parseInt(adjusting[id] ?? '', 10)
+  async function setStock(id: string, qty: number) {
     if (isNaN(qty) || qty < 0) return
     setSaving((prev) => ({ ...prev, [id]: true }))
 
@@ -139,6 +138,15 @@ export function InventoryTable({ variants }: { variants: VariantRow[] }) {
     } finally {
       setSaving((prev) => ({ ...prev, [id]: false }))
     }
+  }
+
+  function handleAdjust(id: string) {
+    return setStock(id, parseInt(adjusting[id] ?? '', 10))
+  }
+
+  // Relative ±1 tap — mobile-friendly for receiving/selling a single unit.
+  function handleDelta(v: VariantRow, delta: number) {
+    return setStock(v.id, Math.max(0, v.stockQuantity + delta))
   }
 
   return (
@@ -188,7 +196,7 @@ export function InventoryTable({ variants }: { variants: VariantRow[] }) {
         </span>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-brand-warm/60">
+      <div className="overflow-x-auto rounded-xl border border-brand-warm/60">
         <table className="w-full text-sm">
           <thead className="bg-brand-cream text-left text-xs font-medium uppercase tracking-wider text-brand-brown/60">
             <tr>
@@ -289,6 +297,24 @@ export function InventoryTable({ variants }: { variants: VariantRow[] }) {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleDelta(v, -1)}
+                          disabled={saving[v.id] || v.stockQuantity <= 0}
+                          aria-label="Decrease stock by 1"
+                          className="h-8 w-8 flex-shrink-0 rounded border border-brand-warm text-brand-brown hover:bg-brand-warm disabled:opacity-40"
+                        >
+                          −
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelta(v, 1)}
+                          disabled={saving[v.id]}
+                          aria-label="Increase stock by 1"
+                          className="h-8 w-8 flex-shrink-0 rounded border border-brand-warm text-brand-brown hover:bg-brand-warm disabled:opacity-40"
+                        >
+                          +
+                        </button>
                         <input
                           type="number"
                           min="0"
@@ -300,7 +326,7 @@ export function InventoryTable({ variants }: { variants: VariantRow[] }) {
                             }))
                           }
                           placeholder={String(v.stockQuantity)}
-                          className="w-20 rounded border border-brand-warm bg-white px-2 py-1 text-sm focus:border-brand-terra focus:outline-none"
+                          className="w-16 rounded border border-brand-warm bg-white px-2 py-1 text-sm focus:border-brand-terra focus:outline-none"
                         />
                         <button
                           type="button"

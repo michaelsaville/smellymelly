@@ -119,20 +119,29 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
             <BrandMark logoUrl={logoUrl} />
           </Link>
 
-          {/* Mobile hamburger */}
-          <button
-            className="sm:hidden p-2 text-brand-brown"
-            onClick={() => setMobileOpen(!mobileOpen)}
-            aria-label="Toggle menu"
-          >
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              {mobileOpen ? (
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              ) : (
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-              )}
-            </svg>
-          </button>
+          {/* Mobile: persistent cart icon + hamburger */}
+          <div className="sm:hidden flex items-center gap-1">
+            <Link href="/cart" className="relative p-2 text-brand-brown" aria-label="Cart">
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17M17 13v0" />
+                <circle cx="9" cy="20" r="1" /><circle cx="18" cy="20" r="1" />
+              </svg>
+              <CartBadge />
+            </Link>
+            <button
+              className="p-2 text-brand-brown"
+              onClick={() => setMobileOpen(!mobileOpen)}
+              aria-label="Toggle menu"
+            >
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                {mobileOpen ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                )}
+              </svg>
+            </button>
+          </div>
 
           {/* Desktop links */}
           <div className="hidden sm:flex items-center gap-6">
