@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
 import { getSquareClient, getSquareLocationId, isSquareConfigured } from '@/app/lib/square'
+import { getStripe, isStripeConfigured } from '@/app/lib/stripe'
+import { computeCheckout } from '@/app/lib/checkout-totals'
 import { sendOrderConfirmation } from '@/app/lib/email'
 import { upsertCustomerFromOrder } from '@/app/lib/customers'
 import { randomUUID } from 'crypto'
@@ -10,7 +12,7 @@ interface CheckoutItem {
   quantity: number
 }
 
-type PaymentMethod = 'SQUARE_CARD' | 'SQUARE_CASH_APP' | 'MANUAL'
+type PaymentMethod = 'STRIPE_CARD' | 'SQUARE_CARD' | 'SQUARE_CASH_APP' | 'MANUAL'
 
 interface CheckoutBody {
   customer: { name: string; email: string; phone?: string }
@@ -18,11 +20,10 @@ interface CheckoutBody {
   shipping?: { name: string; address: string; city: string; state: string; zip: string }
   items: CheckoutItem[]
   paymentToken?: string // Square Web Payments SDK nonce (card or cash-app)
+  stripePaymentIntentId?: string // Stripe PaymentIntent id, already confirmed client-side
   paymentMethod?: PaymentMethod
   shippingCentsOverride?: number // from rate calculation
 }
-
-const SHIPPING_CENTS = 599
 
 export async function POST(req: NextRequest) {
   try {
@@ -70,82 +71,32 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // --- Load variants & verify stock ---
-    const variantIds = body.items.map((i) => i.variantId)
-    const variants = await prisma.sM_ProductVariant.findMany({
-      where: { id: { in: variantIds }, isActive: true },
-    })
-
-    const variantMap = new Map(variants.map((v) => [v.id, v]))
-
-    for (const item of body.items) {
-      const variant = variantMap.get(item.variantId)
-      if (!variant) {
-        return NextResponse.json({ error: `Product variant not found: ${item.variantId}` }, { status: 400 })
-      }
-      if (item.quantity < 1) {
-        return NextResponse.json({ error: 'Quantity must be at least 1.' }, { status: 400 })
-      }
-      if (variant.stockQuantity < item.quantity) {
-        return NextResponse.json(
-          { error: `Not enough stock for "${variant.name}". Available: ${variant.stockQuantity}` },
-          { status: 400 },
-        )
-      }
+    const isStripeTender = paymentMethod === 'STRIPE_CARD'
+    if (isStripeTender && !isStripeConfigured()) {
+      return NextResponse.json(
+        { error: 'Card payments are temporarily unavailable. Please pick another option.' },
+        { status: 400 },
+      )
+    }
+    if (isStripeTender && !body.stripePaymentIntentId) {
+      return NextResponse.json(
+        { error: 'Payment confirmation is required for card checkout.' },
+        { status: 400 },
+      )
     }
 
-    // --- Load tax rate from settings ---
-    const settings = await prisma.sM_Settings.findFirst({ where: { id: 'singleton' } })
-    const taxRate = settings?.taxRate ?? 0.06
-
-    // --- Calculate totals ---
-    const orderItems = body.items.map((item) => {
-      const variant = variantMap.get(item.variantId)!
-      return {
-        variantId: variant.id,
-        productName: variant.name,
-        variantName: variant.name,
-        quantity: item.quantity,
-        unitCents: variant.priceCents,
-        totalCents: variant.priceCents * item.quantity,
-      }
+    // --- Compute + validate cart (single source of truth for money math,
+    // shared with the Stripe PaymentIntent route so amounts can't drift) ---
+    const computed = await computeCheckout({
+      items: body.items,
+      fulfillment: body.fulfillment,
+      email: body.customer.email,
+      shippingCentsOverride: body.shippingCentsOverride,
     })
-
-    // Load product names for order items
-    const variantsWithProduct = await prisma.sM_ProductVariant.findMany({
-      where: { id: { in: variantIds } },
-      include: { product: true },
-    })
-    const variantProductMap = new Map(variantsWithProduct.map((v) => [v.id, v]))
-
-    for (const oi of orderItems) {
-      const vp = variantProductMap.get(oi.variantId)
-      if (vp) {
-        oi.productName = vp.product.name
-        oi.variantName = vp.name
-      }
+    if (!computed.ok) {
+      return NextResponse.json({ error: computed.error }, { status: computed.status })
     }
-
-    const rawSubtotalCents = orderItems.reduce((sum, i) => sum + i.totalCents, 0)
-
-    // Wholesale discount lookup. Applied BEFORE tax and shipping.
-    // Email match is case-insensitive (SM_Customer stores lowercased).
-    const existingCustomer = await prisma.sM_Customer.findUnique({
-      where: { email: body.customer.email.trim().toLowerCase() },
-      select: { wholesaleDiscountPct: true },
-    })
-    const wholesalePct = existingCustomer?.wholesaleDiscountPct ?? 0
-    const wholesaleDiscountCents =
-      wholesalePct > 0 ? Math.round((rawSubtotalCents * wholesalePct) / 100) : 0
-    const subtotalCents = rawSubtotalCents - wholesaleDiscountCents
-
-    const shippingCents = body.fulfillment === 'SHIP'
-      ? (body.shippingCentsOverride && body.shippingCentsOverride > 0
-          ? body.shippingCentsOverride
-          : SHIPPING_CENTS)
-      : 0
-    const taxCents = Math.round(subtotalCents * taxRate)
-    const totalCents = subtotalCents + shippingCents + taxCents
+    const { orderItems, subtotalCents, shippingCents, taxCents, totalCents } = computed.data
 
     // --- Process Square payment if applicable ---
     let squarePaymentId: string | null = null
@@ -175,6 +126,39 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // --- Verify Stripe payment if applicable ---
+    // The card was already confirmed client-side. Here we authoritatively ask
+    // Stripe whether it actually succeeded AND that the captured amount equals
+    // the total we just computed, before we ever create a PAID order.
+    let stripePaymentIntentId: string | null = null
+    if (isStripeTender && body.stripePaymentIntentId) {
+      try {
+        const stripe = getStripe()
+        const intent = await stripe.paymentIntents.retrieve(body.stripePaymentIntentId)
+        if (intent.status !== 'succeeded') {
+          return NextResponse.json({ error: 'Payment was not completed. Please try again.' }, { status: 400 })
+        }
+        if (intent.amount_received !== totalCents) {
+          console.error(
+            `Stripe amount mismatch: PI ${intent.id} received ${intent.amount_received} vs expected ${totalCents}`,
+          )
+          return NextResponse.json(
+            { error: 'Payment amount did not match your order total. Please contact us before retrying.' },
+            { status: 400 },
+          )
+        }
+        stripePaymentIntentId = intent.id
+      } catch (err) {
+        console.error('Stripe verify error:', err)
+        return NextResponse.json(
+          { error: 'Could not verify your payment. Please contact us before retrying.' },
+          { status: 400 },
+        )
+      }
+    }
+
+    const paidNow = !!squarePaymentId || !!stripePaymentIntentId
+
     // --- Create order + items + deduct stock in a transaction ---
     const order = await prisma.$transaction(async (tx) => {
       // Deduct stock
@@ -188,7 +172,7 @@ export async function POST(req: NextRequest) {
       // Create order with items
       const created = await tx.sM_Order.create({
         data: {
-          status: squarePaymentId ? 'PAID' : 'PENDING',
+          status: paidNow ? 'PAID' : 'PENDING',
           fulfillment: body.fulfillment,
           customerName: body.customer.name.trim(),
           customerEmail: body.customer.email.trim(),
@@ -204,7 +188,8 @@ export async function POST(req: NextRequest) {
           totalCents,
           paymentMethod,
           squarePaymentId,
-          paidAt: squarePaymentId ? new Date() : null,
+          stripePaymentIntentId,
+          paidAt: paidNow ? new Date() : null,
           items: {
             create: orderItems.map((oi) => ({
               variantId: oi.variantId,

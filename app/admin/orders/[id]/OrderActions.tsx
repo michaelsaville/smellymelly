@@ -21,7 +21,7 @@ interface Props {
   trackingNumber: string | null
   shippingLabel: string | null
   canBuyLabel: boolean
-  paymentMethod: 'SQUARE_CARD' | 'SQUARE_CASH_APP' | 'MANUAL'
+  paymentMethod: 'STRIPE_CARD' | 'SQUARE_CARD' | 'SQUARE_CASH_APP' | 'MANUAL'
   paidAt: string | null
 }
 

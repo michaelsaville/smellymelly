@@ -4,8 +4,9 @@ import { useEffect, useState, useCallback, useRef, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import StoreLayout from '@/app/components/StoreLayout'
-import SquarePaymentForm from '@/app/components/SquarePaymentForm'
-import SquareCashAppPay from '@/app/components/SquareCashAppPay'
+import StripePaymentForm, { type StripeFormHandle } from '@/app/components/StripePaymentForm'
+import { Elements } from '@stripe/react-stripe-js'
+import { loadStripe, type Stripe } from '@stripe/stripe-js'
 import { getCart, clearCart, type CartItem } from '@/app/lib/cart'
 
 const TAX_RATE = 0.06
@@ -56,27 +57,31 @@ export default function CheckoutPage() {
   const [fetchingRates, setFetchingRates] = useState(false)
 
   // Payment state
-  type PaymentMethod = 'SQUARE_CARD' | 'SQUARE_CASH_APP' | 'MANUAL'
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('SQUARE_CARD')
-  const [paymentToken, setPaymentToken] = useState<string | null>(null)
-  const [squareConfigured, setSquareConfigured] = useState(false)
+  type PaymentMethod = 'STRIPE_CARD' | 'MANUAL'
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('STRIPE_CARD')
+  const [stripeConfigured, setStripeConfigured] = useState(false)
+  const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null)
   const [manualHandles, setManualHandles] = useState<{
     venmoHandle: string
     cashAppTag: string
     paymentInstructions: string
   } | null>(null)
-  const tokenResolveRef = useRef<((token: string | null) => void) | null>(null)
+  const stripeFormRef = useRef<StripeFormHandle>(null)
 
   const refresh = useCallback(() => setItems(getCart()), [])
 
   useEffect(() => {
     setMounted(true)
     refresh()
-    fetch('/api/square/config')
+    fetch('/api/stripe/config')
       .then((r) => r.json())
       .then((cfg) => {
-        setSquareConfigured(cfg.configured)
-        if (!cfg.configured) setPaymentMethod('MANUAL')
+        setStripeConfigured(cfg.configured)
+        if (cfg.configured && cfg.publishableKey) {
+          setStripePromise(loadStripe(cfg.publishableKey))
+        } else {
+          setPaymentMethod('MANUAL')
+        }
       })
       .catch(() => {})
     fetch('/api/settings/public')
@@ -124,23 +129,6 @@ export default function CheckoutPage() {
     return () => clearTimeout(timer)
   }, [fulfillment, shipZip, fetchShippingRates])
 
-  const handleSquareTokenize = useCallback((token: string) => {
-    setPaymentToken(token)
-    if (tokenResolveRef.current) {
-      tokenResolveRef.current(token)
-      tokenResolveRef.current = null
-    }
-  }, [])
-
-  const handleSquareError = useCallback((msg: string) => {
-    setError(msg)
-    setSubmitting(false)
-    if (tokenResolveRef.current) {
-      tokenResolveRef.current(null)
-      tokenResolveRef.current = null
-    }
-  }, [])
-
   if (!mounted) {
     return (
       <StoreLayout>
@@ -174,11 +162,8 @@ export default function CheckoutPage() {
   const tax = Math.round(subtotal * TAX_RATE)
   const total = subtotal + shipping + tax
 
-  // Needs an up-front Square tokenization step when the buyer picked a
-  // Square tender. MANUAL skips Square entirely.
-  const needsPayment =
-    (paymentMethod === 'SQUARE_CARD' || paymentMethod === 'SQUARE_CASH_APP') &&
-    squareConfigured
+  // Card checkout requires an in-page Stripe confirmation. MANUAL skips it.
+  const needsPayment = paymentMethod === 'STRIPE_CARD' && stripeConfigured
 
   const manualAvailable = Boolean(
     manualHandles?.venmoHandle || manualHandles?.cashAppTag || manualHandles?.paymentInstructions,
@@ -189,30 +174,12 @@ export default function CheckoutPage() {
     setError(null)
     setSubmitting(true)
 
-    let token = paymentToken
-
-    if (needsPayment && !token) {
-      const el = document.getElementById('square-card-container') as
-        (HTMLElement & { tokenize?: () => Promise<void> }) | null
-      if (el?.tokenize) {
-        const tokenPromise = new Promise<string | null>((resolve) => {
-          tokenResolveRef.current = resolve
-        })
-        await el.tokenize()
-        token = await tokenPromise
-        if (!token) return
-      } else {
-        setError('Payment form not ready. Please wait a moment and try again.')
-        setSubmitting(false)
-        return
-      }
-    }
-
     try {
+      const cartItems = items.map((i) => ({ variantId: i.variantId, quantity: i.quantity }))
       const body: Record<string, unknown> = {
         customer: { name, email, phone: phone || undefined },
         fulfillment,
-        items: items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
+        items: cartItems,
       }
 
       if (fulfillment === 'SHIP') {
@@ -227,10 +194,25 @@ export default function CheckoutPage() {
         body.shippingCentsOverride = shipping
       }
 
-      if (token) {
-        body.paymentToken = token
-      }
       body.paymentMethod = paymentMethod
+
+      // Card checkout: confirm the card in-page with Stripe first (this is what
+      // actually charges), then hand the succeeded PaymentIntent id to the
+      // server, which re-verifies status + amount before saving a PAID order.
+      if (paymentMethod === 'STRIPE_CARD' && stripeConfigured) {
+        if (!stripeFormRef.current) {
+          setError('Payment form is still loading. Please wait a moment and try again.')
+          setSubmitting(false)
+          return
+        }
+        const piId = await stripeFormRef.current.confirm({
+          customer: { name, email, phone: phone || undefined },
+          fulfillment,
+          items: cartItems,
+          shippingCentsOverride: fulfillment === 'SHIP' ? shipping : undefined,
+        })
+        body.stripePaymentIntentId = piId
+      }
 
       const res = await fetch('/api/checkout', {
         method: 'POST',
@@ -248,8 +230,8 @@ export default function CheckoutPage() {
 
       clearCart()
       router.push(`/order/${data.orderId}`)
-    } catch {
-      setError('Network error. Please try again.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Network error. Please try again.')
       setSubmitting(false)
     }
   }
@@ -414,17 +396,14 @@ export default function CheckoutPage() {
               <h2 className="font-display text-lg font-bold text-brand-dark mb-4">Payment</h2>
 
               <div className="space-y-2 mb-4">
-                {squareConfigured && (
+                {stripeConfigured && (
                   <label className="flex items-start gap-3 p-3 rounded-lg border border-brand-warm/60 cursor-pointer hover:bg-surface-warm">
                     <input
                       type="radio"
                       name="paymentMethod"
-                      value="SQUARE_CARD"
-                      checked={paymentMethod === 'SQUARE_CARD'}
-                      onChange={() => {
-                        setPaymentMethod('SQUARE_CARD')
-                        setPaymentToken(null)
-                      }}
+                      value="STRIPE_CARD"
+                      checked={paymentMethod === 'STRIPE_CARD'}
+                      onChange={() => setPaymentMethod('STRIPE_CARD')}
                       className="mt-0.5"
                     />
                     <div>
@@ -432,30 +411,7 @@ export default function CheckoutPage() {
                         Credit or debit card
                       </div>
                       <div className="text-xs text-brand-brown/60">
-                        Secure checkout powered by Square.
-                      </div>
-                    </div>
-                  </label>
-                )}
-                {squareConfigured && (
-                  <label className="flex items-start gap-3 p-3 rounded-lg border border-brand-warm/60 cursor-pointer hover:bg-surface-warm">
-                    <input
-                      type="radio"
-                      name="paymentMethod"
-                      value="SQUARE_CASH_APP"
-                      checked={paymentMethod === 'SQUARE_CASH_APP'}
-                      onChange={() => {
-                        setPaymentMethod('SQUARE_CASH_APP')
-                        setPaymentToken(null)
-                      }}
-                      className="mt-0.5"
-                    />
-                    <div>
-                      <div className="text-sm font-medium text-brand-dark">
-                        Cash App Pay
-                      </div>
-                      <div className="text-xs text-brand-brown/60">
-                        Pay through Cash App — redirect to approve.
+                        Secure checkout powered by Stripe.
                       </div>
                     </div>
                   </label>
@@ -466,10 +422,7 @@ export default function CheckoutPage() {
                     name="paymentMethod"
                     value="MANUAL"
                     checked={paymentMethod === 'MANUAL'}
-                    onChange={() => {
-                      setPaymentMethod('MANUAL')
-                      setPaymentToken(null)
-                    }}
+                    onChange={() => setPaymentMethod('MANUAL')}
                     className="mt-0.5"
                   />
                   <div>
@@ -487,22 +440,18 @@ export default function CheckoutPage() {
                 </label>
               </div>
 
-              {paymentMethod === 'SQUARE_CARD' && (
-                <SquarePaymentForm
-                  onTokenize={handleSquareTokenize}
-                  onError={handleSquareError}
-                  disabled={submitting}
-                />
-              )}
-
-              {paymentMethod === 'SQUARE_CASH_APP' && total > 0 && (
-                <SquareCashAppPay
-                  amountCents={total}
-                  referenceId={`checkout-${Date.now()}`}
-                  onTokenize={handleSquareTokenize}
-                  onError={handleSquareError}
-                  disabled={submitting}
-                />
+              {paymentMethod === 'STRIPE_CARD' && stripeConfigured && stripePromise && total >= 50 && (
+                <Elements
+                  stripe={stripePromise}
+                  options={{
+                    mode: 'payment',
+                    amount: total,
+                    currency: 'usd',
+                    appearance: { theme: 'stripe' },
+                  }}
+                >
+                  <StripePaymentForm ref={stripeFormRef} disabled={submitting} />
+                </Elements>
               )}
 
               {paymentMethod === 'MANUAL' && (

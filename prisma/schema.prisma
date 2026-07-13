@@ -265,6 +265,10 @@ enum SM_FulfillmentType {
 }
 
 enum SM_PaymentMethod {
+  // Card via Stripe (embedded Payment Element) — the live card processor.
+  STRIPE_CARD
+  // Legacy Square values — never activated in production. Kept so historical
+  // orders and the column default stay valid; no longer offered at checkout.
   SQUARE_CARD
   SQUARE_CASH_APP
   // Manual = buyer sends money directly via Venmo / Cash App / etc.
@@ -309,6 +313,7 @@ model SM_Order {
   manualPaymentNote String?
   squarePaymentId String?
   squareOrderId   String?
+  stripePaymentIntentId String?
 
   // Shipping
   trackingNumber String?
