@@ -5,7 +5,9 @@ import { prisma } from '@/app/lib/prisma'
 import { detectAllergens } from '@/app/lib/allergens'
 import { resolveScents, parseVariantScent } from '@/app/lib/scent-resolver'
 import StoreLayout from '@/app/components/StoreLayout'
+import Stars from '@/app/components/Stars'
 import AddToCart from './AddToCart'
+import ReviewForm from './ReviewForm'
 
 export const dynamic = 'force-dynamic'
 
@@ -76,6 +78,14 @@ export default async function ProductPage({
   ])
 
   if (!product) redirect('/shop')
+
+  const reviews = await prisma.sM_Review.findMany({
+    where: { productId: product.id, isApproved: true },
+    orderBy: { createdAt: 'desc' },
+  })
+  const avgRating = reviews.length
+    ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
+    : 0
 
   const baseIngredients = product.category?.baseIngredients?.trim() ?? ''
   const extraIngredients = product.ingredients?.trim() ?? ''
@@ -274,6 +284,44 @@ export default async function ProductPage({
               />
             </div>
           </div>
+
+          {/* Reviews */}
+          <section className="mt-16 border-t border-brand-warm/60 pt-10">
+            <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
+              <div>
+                <h2 className="font-display text-2xl font-bold text-brand-dark">Reviews</h2>
+                {reviews.length > 0 ? (
+                  <div className="flex items-center gap-2 mt-1">
+                    <Stars rating={avgRating} />
+                    <span className="text-sm text-brand-brown/70">
+                      {avgRating.toFixed(1)} · {reviews.length} review{reviews.length === 1 ? '' : 's'}
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-sm text-brand-brown/60 mt-1">Be the first to review {product.name}.</p>
+                )}
+              </div>
+              <ReviewForm productId={product.id} />
+            </div>
+
+            {reviews.length > 0 && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {reviews.map((r) => (
+                  <div key={r.id} className="card">
+                    <div className="flex items-center justify-between">
+                      <Stars rating={r.rating} className="text-sm" />
+                      <span className="text-xs text-brand-brown/50">
+                        {r.createdAt.toLocaleDateString()}
+                      </span>
+                    </div>
+                    {r.title && <p className="mt-2 font-semibold text-brand-dark">{r.title}</p>}
+                    <p className="mt-1 text-sm text-brand-brown/80 whitespace-pre-wrap">{r.body}</p>
+                    <p className="mt-2 text-xs text-brand-brown/50">— {r.authorName}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       </div>
     </StoreLayout>

@@ -8,6 +8,9 @@ const NAV_ITEMS = [
   { href: '/admin/scents', label: 'Scents' },
   { href: '/admin/menu', label: 'Menu' },
   { href: '/admin/orders', label: 'Orders' },
+  { href: '/admin/invoices', label: 'Invoices' },
+  { href: '/admin/inquiries', label: 'Requests' },
+  { href: '/admin/reviews', label: 'Reviews' },
   { href: '/admin/reports', label: 'Reports' },
   { href: '/admin/campaigns', label: 'Campaigns' },
   { href: '/admin/order-forms', label: 'Paper Forms' },
@@ -16,6 +19,7 @@ const NAV_ITEMS = [
   { href: '/admin/inventory', label: 'Inventory' },
   { href: '/admin/materials', label: 'Materials' },
   { href: '/admin/recipes', label: 'Recipes' },
+  { href: '/admin/production', label: 'Production' },
   { href: '/admin/ai', label: 'AI' },
   { href: '/admin/settings', label: 'Settings' },
 ] as const
