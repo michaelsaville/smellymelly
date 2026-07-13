@@ -19,6 +19,7 @@ export interface StripePayload {
   fulfillment: 'SHIP' | 'PICKUP'
   items: { variantId: string; quantity: number }[]
   shippingCentsOverride?: number
+  discountCode?: string
 }
 
 export interface StripeFormHandle {

@@ -332,6 +332,11 @@ model SM_Order {
   taxCents      Int @default(0)
   totalCents    Int
 
+  // Promo/discount code applied at checkout (null if none). discountCents is
+  // the amount taken off the merchandise subtotal.
+  discountCode  String?
+  discountCents Int     @default(0)
+
   // Payment tracking
   paymentMethod   SM_PaymentMethod @default(SQUARE_CARD)
   // For MANUAL tender — filled in by admin when marking the order paid.
@@ -579,6 +584,42 @@ model SM_InvoiceItem {
   @@schema("smellymelly")
 }
 
+// ─── DISCOUNT / PROMO CODES ──────────────────────────────────────────────
+
+enum SM_DiscountType {
+  PERCENT // value = 0-100, percent off the (post-wholesale) merchandise subtotal
+  FIXED // value = cents off, capped at the merchandise subtotal
+
+  @@schema("smellymelly")
+}
+
+/// A storefront promo code applied at checkout. Discount is taken on the
+/// merchandise subtotal (after any wholesale discount, before tax/shipping).
+/// usedCount is incremented ONLY after payment succeeds (see checkout route).
+model SM_DiscountCode {
+  id   String          @id @default(cuid())
+  /// Stored uppercased; matched case-insensitively at checkout.
+  code String          @unique
+  type SM_DiscountType @default(PERCENT)
+  /// PERCENT: whole percent (0-100). FIXED: cents off.
+  value Int
+
+  isActive         Boolean   @default(true)
+  /// 0 = unlimited redemptions.
+  maxUses          Int       @default(0)
+  usedCount        Int       @default(0)
+  /// Order must reach this merchandise subtotal (cents) to qualify. 0 = none.
+  minSubtotalCents Int       @default(0)
+  expiresAt        DateTime?
+  notes            String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("sm_discount_codes")
+  @@schema("smellymelly")
+}
+
 // ─── RECIPES & MATERIALS (cost of goods) ─────────────────────────────────
 
 model SM_Material {
@@ -688,6 +729,13 @@ model SM_Settings {
   // Admins with a valid sm_admin cookie bypass so they can still preview.
   maintenanceMode    Boolean @default(false)
   maintenanceMessage String  @default("")
+
+  // Site-wide announcement banner (top of every storefront page). Shown only
+  // when announcementActive is true and announcementText is non-empty.
+  // announcementLink is optional — when set, the banner links there.
+  announcementActive Boolean @default(false)
+  announcementText   String  @default("")
+  announcementLink   String  @default("")
 
   // Manual payment handles — shown on the order confirmation screen + email
   // when the buyer picks "Pay directly via Venmo / Cash App" at checkout.

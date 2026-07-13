@@ -29,6 +29,9 @@ interface Props {
   paymentInstructions: string
   taxRate: number
   productDisclaimer: string
+  announcementActive: boolean
+  announcementText: string
+  announcementLink: string
   categories: CategoryTemplate[]
   allergens: AllergenRow[]
 }
@@ -42,6 +45,9 @@ export default function SettingsForm({
   paymentInstructions: initialInstructions,
   taxRate: initialTaxRate,
   productDisclaimer: initialDisclaimer,
+  announcementActive: initialAnnounceActive,
+  announcementText: initialAnnounceText,
+  announcementLink: initialAnnounceLink,
   categories: initialCategories,
   allergens: initialAllergens,
 }: Props) {
@@ -58,6 +64,9 @@ export default function SettingsForm({
   const [paymentInstructions, setPaymentInstructions] = useState(initialInstructions)
   const [taxRatePct, setTaxRatePct] = useState(String((initialTaxRate * 100).toFixed(2)))
   const [productDisclaimer, setProductDisclaimer] = useState(initialDisclaimer)
+  const [announcementActive, setAnnouncementActive] = useState(initialAnnounceActive)
+  const [announcementText, setAnnouncementText] = useState(initialAnnounceText)
+  const [announcementLink, setAnnouncementLink] = useState(initialAnnounceLink)
   const [categories, setCategories] = useState<CategoryTemplate[]>(initialCategories)
   const [allergens, setAllergens] = useState<AllergenRow[]>(initialAllergens)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -160,6 +169,9 @@ export default function SettingsForm({
           paymentInstructions: paymentInstructions.trim(),
           taxRate: pct / 100,
           productDisclaimer: productDisclaimer.trim(),
+          announcementActive,
+          announcementText: announcementText.trim(),
+          announcementLink: announcementLink.trim(),
           categories: categories.map((c) => ({
             id: c.id,
             baseIngredients: c.baseIngredients.trim(),
@@ -412,6 +424,50 @@ export default function SettingsForm({
           placeholder="Handmade in small batches. May contain nuts, shea, beeswax, essential oils…"
           className="input resize-y"
         />
+      </div>
+
+      <div className="card">
+        <h2 className="font-display text-lg font-semibold text-brand-dark mb-1">
+          Announcement banner
+        </h2>
+        <p className="text-xs text-brand-brown/60 mb-4">
+          A colored bar across the top of every storefront page. Use it for sales,
+          shipping cutoffs, or holiday hours. Turn it off to hide it.
+        </p>
+        <label className="flex items-center gap-2 mb-4">
+          <input
+            type="checkbox"
+            checked={announcementActive}
+            onChange={(e) => setAnnouncementActive(e.target.checked)}
+            className="h-4 w-4 rounded border-brand-warm text-brand-terra focus:ring-brand-terra"
+          />
+          <span className="text-sm font-medium text-brand-brown">Show the banner</span>
+        </label>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-brand-brown mb-1">Message</label>
+            <input
+              value={announcementText}
+              onChange={(e) => setAnnouncementText(e.target.value)}
+              placeholder="Free local pickup this weekend! 🎉"
+              className="input w-full"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-brand-brown mb-1">
+              Link (optional)
+            </label>
+            <input
+              value={announcementLink}
+              onChange={(e) => setAnnouncementLink(e.target.value)}
+              placeholder="/shop or https://…"
+              className="input w-full"
+            />
+            <p className="mt-1 text-xs text-brand-brown/50">
+              When set, the whole banner links here.
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="card">

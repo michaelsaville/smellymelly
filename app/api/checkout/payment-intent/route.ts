@@ -7,6 +7,7 @@ interface Body {
   fulfillment?: 'SHIP' | 'PICKUP'
   items?: { variantId: string; quantity: number }[]
   shippingCentsOverride?: number
+  discountCode?: string
 }
 
 /**
@@ -40,6 +41,7 @@ export async function POST(req: NextRequest) {
       fulfillment: body.fulfillment,
       email,
       shippingCentsOverride: body.shippingCentsOverride,
+      discountCode: body.discountCode,
     })
     if (!computed.ok) {
       return NextResponse.json({ error: computed.error }, { status: computed.status })

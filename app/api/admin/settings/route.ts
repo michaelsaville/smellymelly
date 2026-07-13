@@ -30,6 +30,9 @@ interface Body {
   taxRate?: number
   productDisclaimer?: string
   menuOrientation?: string
+  announcementActive?: boolean
+  announcementText?: string
+  announcementLink?: string
   categories?: CategoryUpdate[]
   allergens?: AllergenInput[]
 }
@@ -49,6 +52,9 @@ export async function POST(req: NextRequest) {
     taxRate?: number
     productDisclaimer?: string
     menuOrientation?: string
+    announcementActive?: boolean
+    announcementText?: string
+    announcementLink?: string
   } = {}
 
   if (typeof body.businessEmail === 'string') {
@@ -73,6 +79,15 @@ export async function POST(req: NextRequest) {
   }
   if (typeof body.productDisclaimer === 'string') {
     data.productDisclaimer = body.productDisclaimer
+  }
+  if (typeof body.announcementActive === 'boolean') {
+    data.announcementActive = body.announcementActive
+  }
+  if (typeof body.announcementText === 'string') {
+    data.announcementText = body.announcementText.trim()
+  }
+  if (typeof body.announcementLink === 'string') {
+    data.announcementLink = body.announcementLink.trim()
   }
   if (typeof body.menuOrientation === 'string') {
     const v = body.menuOrientation.toUpperCase()

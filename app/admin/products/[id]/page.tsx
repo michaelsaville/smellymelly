@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { requireAdmin } from '@/app/lib/admin-auth'
 import { prisma } from '@/app/lib/prisma'
 import EditProductForm from './EditProductForm'
+import DuplicateButton from './DuplicateButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,9 +36,12 @@ export default async function EditProductPage({
         <h1 className="font-display text-3xl font-bold text-brand-dark">
           Edit: {product.name}
         </h1>
-        <a href="/admin/products" className="btn-ghost text-sm">
-          &larr; Back to Products
-        </a>
+        <div className="flex items-center gap-2">
+          <DuplicateButton productId={product.id} />
+          <a href="/admin/products" className="btn-ghost text-sm">
+            &larr; Back to Products
+          </a>
+        </div>
       </div>
 
       <EditProductForm

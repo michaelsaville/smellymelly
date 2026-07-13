@@ -13,8 +13,12 @@ export async function GET() {
       cashAppTag: true,
       paymentInstructions: true,
       logoUrl: true,
+      announcementActive: true,
+      announcementText: true,
+      announcementLink: true,
     },
   })
+  const announceOn = !!settings?.announcementActive && !!settings?.announcementText?.trim()
   return NextResponse.json({
     businessEmail: settings?.businessEmail ?? '',
     businessPhone: settings?.businessPhone ?? '',
@@ -22,5 +26,7 @@ export async function GET() {
     cashAppTag: settings?.cashAppTag ?? '',
     paymentInstructions: settings?.paymentInstructions ?? '',
     logoUrl: settings?.logoUrl ?? null,
+    announcementText: announceOn ? settings!.announcementText.trim() : '',
+    announcementLink: announceOn ? (settings?.announcementLink?.trim() ?? '') : '',
   })
 }

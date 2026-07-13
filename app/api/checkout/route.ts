@@ -25,6 +25,7 @@ interface CheckoutBody {
   shippingCentsOverride?: number // from rate calculation
   isGift?: boolean
   giftMessage?: string
+  discountCode?: string
 }
 
 // The Stripe card is confirmed (charged) client-side BEFORE this route runs. If
@@ -118,6 +119,7 @@ export async function POST(req: NextRequest) {
       fulfillment: body.fulfillment,
       email: body.customer.email,
       shippingCentsOverride: body.shippingCentsOverride,
+      discountCode: body.discountCode,
     })
     if (!computed.ok) {
       // The Stripe card was already charged client-side — refund it so the
@@ -128,7 +130,16 @@ export async function POST(req: NextRequest) {
         : computed.error
       return NextResponse.json({ error: msg }, { status: computed.status })
     }
-    const { orderItems, subtotalCents, shippingCents, taxCents, totalCents } = computed.data
+    const {
+      orderItems,
+      subtotalCents,
+      discountCents,
+      discountCode,
+      discountCodeId,
+      shippingCents,
+      taxCents,
+      totalCents,
+    } = computed.data
 
     // --- Process Square payment if applicable ---
     let squarePaymentId: string | null = null
@@ -224,6 +235,8 @@ export async function POST(req: NextRequest) {
           shippingState: body.fulfillment === 'SHIP' ? body.shipping!.state.trim() : null,
           shippingZip: body.fulfillment === 'SHIP' ? body.shipping!.zip.trim() : null,
           subtotalCents,
+          discountCode,
+          discountCents,
           shippingCents,
           taxCents,
           totalCents,
@@ -260,6 +273,19 @@ export async function POST(req: NextRequest) {
         },
         { status: soldOut ? 409 : 500 },
       )
+    }
+
+    // Redeem the promo code now that the order exists. Best-effort: a bump
+    // failure must not fail an order that's already placed and (for card) paid.
+    if (discountCodeId) {
+      try {
+        await prisma.sM_DiscountCode.update({
+          where: { id: discountCodeId },
+          data: { usedCount: { increment: 1 } },
+        })
+      } catch (err) {
+        console.error(`[promo] usedCount bump failed for ${discountCodeId}:`, err)
+      }
     }
 
     // Link to a customer row (dedupe by email) + refresh denormalized stats.

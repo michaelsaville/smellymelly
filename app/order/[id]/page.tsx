@@ -79,6 +79,12 @@ export default async function OrderConfirmationPage({
               <span>Subtotal</span>
               <span>{formatMoney(order.subtotalCents)}</span>
             </div>
+            {order.discountCents > 0 && (
+              <div className="flex justify-between text-green-700">
+                <span>Discount{order.discountCode ? ` (${order.discountCode})` : ''}</span>
+                <span>−{formatMoney(order.discountCents)}</span>
+              </div>
+            )}
             {order.shippingCents > 0 && (
               <div className="flex justify-between text-brand-brown">
                 <span>Shipping</span>

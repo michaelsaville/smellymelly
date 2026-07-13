@@ -22,6 +22,8 @@ export interface ComputeInput {
   fulfillment: 'SHIP' | 'PICKUP'
   email: string
   shippingCentsOverride?: number
+  /** Storefront promo code entered at checkout (case-insensitive). */
+  discountCode?: string
 }
 
 export interface ComputedOrderItem {
@@ -38,6 +40,12 @@ export interface ComputeResult {
   rawSubtotalCents: number
   wholesaleDiscountCents: number
   subtotalCents: number
+  /** Promo-code amount taken off the (post-wholesale) merchandise subtotal. */
+  discountCents: number
+  /** Normalized (uppercased) promo code that was applied, or null. */
+  discountCode: string | null
+  /** Id of the applied SM_DiscountCode row — used to bump usedCount post-payment. */
+  discountCodeId: string | null
   shippingCents: number
   taxCents: number
   totalCents: number
@@ -101,14 +109,38 @@ export async function computeCheckout(input: ComputeInput): Promise<ComputeOutco
     wholesalePct > 0 ? Math.round((rawSubtotalCents * wholesalePct) / 100) : 0
   const subtotalCents = rawSubtotalCents - wholesaleDiscountCents
 
+  // Promo/discount code — applied on the post-wholesale merchandise subtotal,
+  // before tax and shipping. An invalid code is a hard error so we never charge
+  // a total the buyer didn't agree to (they applied it moments earlier).
+  let discountCents = 0
+  let discountCode: string | null = null
+  let discountCodeId: string | null = null
+  const rawCode = input.discountCode?.trim().toUpperCase()
+  if (rawCode) {
+    const promo = await prisma.sM_DiscountCode.findUnique({ where: { code: rawCode } })
+    const invalid = promoValidationError(promo, subtotalCents)
+    if (invalid) return { ok: false, error: invalid, status: 400 }
+    // promo is non-null here (promoValidationError returns a message otherwise)
+    const p = promo!
+    const gross =
+      p.type === 'PERCENT'
+        ? Math.round((subtotalCents * p.value) / 100)
+        : p.value
+    discountCents = Math.min(Math.max(0, gross), subtotalCents)
+    discountCode = p.code
+    discountCodeId = p.id
+  }
+
+  const taxableCents = subtotalCents - discountCents
+
   const shippingCents =
     input.fulfillment === 'SHIP'
       ? input.shippingCentsOverride && input.shippingCentsOverride > 0
         ? input.shippingCentsOverride
         : SHIPPING_CENTS
       : 0
-  const taxCents = Math.round(subtotalCents * taxRate)
-  const totalCents = subtotalCents + shippingCents + taxCents
+  const taxCents = Math.round(taxableCents * taxRate)
+  const totalCents = taxableCents + shippingCents + taxCents
 
   return {
     ok: true,
@@ -117,9 +149,40 @@ export async function computeCheckout(input: ComputeInput): Promise<ComputeOutco
       rawSubtotalCents,
       wholesaleDiscountCents,
       subtotalCents,
+      discountCents,
+      discountCode,
+      discountCodeId,
       shippingCents,
       taxCents,
       totalCents,
     },
   }
+}
+
+type PromoRow = {
+  isActive: boolean
+  maxUses: number
+  usedCount: number
+  minSubtotalCents: number
+  expiresAt: Date | null
+} | null
+
+/**
+ * Returns a human-readable reason the promo can't be applied, or null if it's
+ * valid for the given post-wholesale subtotal. Shared by the checkout math and
+ * the /validate-code preview endpoint so the two never disagree.
+ */
+export function promoValidationError(promo: PromoRow, subtotalCents: number): string | null {
+  if (!promo) return 'That promo code was not found.'
+  if (!promo.isActive) return 'That promo code is no longer active.'
+  if (promo.expiresAt && promo.expiresAt.getTime() < Date.now()) {
+    return 'That promo code has expired.'
+  }
+  if (promo.maxUses > 0 && promo.usedCount >= promo.maxUses) {
+    return 'That promo code has reached its usage limit.'
+  }
+  if (promo.minSubtotalCents > 0 && subtotalCents < promo.minSubtotalCents) {
+    return `Add $${(promo.minSubtotalCents / 100).toFixed(2)} in products to use this code.`
+  }
+  return null
 }

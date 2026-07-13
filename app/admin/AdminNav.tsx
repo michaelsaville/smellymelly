@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { href: '/admin/campaigns', label: 'Campaigns' },
   { href: '/admin/customers', label: 'Customers' },
   { href: '/admin/invoices', label: 'Invoices' },
+  { href: '/admin/discounts', label: 'Promo Codes' },
   { href: '/admin/inquiries', label: 'Requests' },
   { href: '/admin/reviews', label: 'Reviews' },
   { href: '/admin/reports', label: 'Reports' },

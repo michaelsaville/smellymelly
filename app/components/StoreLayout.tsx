@@ -87,6 +87,46 @@ function useLogoUrl(): string | null {
   return logoUrl
 }
 
+interface Announcement {
+  text: string
+  link: string
+}
+
+/** Site-wide announcement banner content, from /api/settings/public. */
+function useAnnouncement(): Announcement | null {
+  const [announcement, setAnnouncement] = useState<Announcement | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/settings/public')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json: { announcementText?: string; announcementLink?: string } | null) => {
+        if (cancelled) return
+        const text = json?.announcementText?.trim()
+        if (text) setAnnouncement({ text, link: json?.announcementLink?.trim() ?? '' })
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  return announcement
+}
+
+function AnnouncementBar({ announcement }: { announcement: Announcement }) {
+  const inner = <span>{announcement.text}</span>
+  return (
+    <div className="bg-brand-terra text-white text-center text-sm px-4 py-2">
+      {announcement.link ? (
+        <Link href={announcement.link} className="font-medium underline-offset-2 hover:underline">
+          {inner}
+        </Link>
+      ) : (
+        inner
+      )}
+    </div>
+  )
+}
+
 function BrandMark({ logoUrl }: { logoUrl: string | null }) {
   if (logoUrl) {
     return (
@@ -109,9 +149,11 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
   const logoUrl = useLogoUrl()
+  const announcement = useAnnouncement()
 
   return (
     <div className="min-h-screen flex flex-col">
+      {announcement && <AnnouncementBar announcement={announcement} />}
       {/* Navigation */}
       <nav className="border-b border-brand-warm/40 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between">

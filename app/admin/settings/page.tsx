@@ -45,6 +45,9 @@ export default async function SettingsPage() {
         paymentInstructions={settings?.paymentInstructions ?? ''}
         taxRate={settings?.taxRate ?? 0.06}
         productDisclaimer={settings?.productDisclaimer ?? ''}
+        announcementActive={settings?.announcementActive ?? false}
+        announcementText={settings?.announcementText ?? ''}
+        announcementLink={settings?.announcementLink ?? ''}
         categories={categories.map((c) => ({
           id: c.id,
           name: c.name,

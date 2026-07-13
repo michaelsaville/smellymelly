@@ -70,6 +70,12 @@ export default function CheckoutPage() {
   } | null>(null)
   const stripeFormRef = useRef<StripeFormHandle>(null)
 
+  // Promo/discount code
+  const [promoInput, setPromoInput] = useState('')
+  const [promo, setPromo] = useState<{ code: string; discountCents: number } | null>(null)
+  const [promoError, setPromoError] = useState<string | null>(null)
+  const [promoChecking, setPromoChecking] = useState(false)
+
   const refresh = useCallback(() => setItems(getCart()), [])
 
   useEffect(() => {
@@ -161,8 +167,48 @@ export default function CheckoutPage() {
   const shipping = fulfillment === 'SHIP'
     ? (selectedRate?.rateCents ?? FALLBACK_SHIPPING_CENTS)
     : 0
-  const tax = Math.round(subtotal * TAX_RATE)
-  const total = subtotal + shipping + tax
+  // Promo discount can't exceed the merchandise subtotal. Tax is charged on the
+  // discounted subtotal (mirrors computeCheckout on the server).
+  const discount = promo ? Math.min(promo.discountCents, subtotal) : 0
+  const taxable = subtotal - discount
+  const tax = Math.round(taxable * TAX_RATE)
+  const total = taxable + shipping + tax
+
+  async function applyPromo() {
+    const code = promoInput.trim()
+    if (!code) return
+    setPromoChecking(true)
+    setPromoError(null)
+    try {
+      const res = await fetch('/api/checkout/validate-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          email,
+          items: items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json.ok) {
+        setPromo(null)
+        setPromoError(json.error || 'That code could not be applied.')
+      } else {
+        setPromo({ code: json.code, discountCents: json.discountCents })
+        setPromoError(null)
+      }
+    } catch {
+      setPromoError('Could not check that code. Please try again.')
+    } finally {
+      setPromoChecking(false)
+    }
+  }
+
+  function clearPromo() {
+    setPromo(null)
+    setPromoInput('')
+    setPromoError(null)
+  }
 
   // Card checkout requires an in-page Stripe confirmation. MANUAL skips it.
   const needsPayment = paymentMethod === 'STRIPE_CARD' && stripeConfigured
@@ -199,6 +245,7 @@ export default function CheckoutPage() {
       body.paymentMethod = paymentMethod
       body.isGift = isGift
       if (isGift && giftMessage.trim()) body.giftMessage = giftMessage.trim()
+      if (promo) body.discountCode = promo.code
 
       // Card checkout: confirm the card in-page with Stripe first (this is what
       // actually charges), then hand the succeeded PaymentIntent id to the
@@ -214,6 +261,7 @@ export default function CheckoutPage() {
           fulfillment,
           items: cartItems,
           shippingCentsOverride: fulfillment === 'SHIP' ? shipping : undefined,
+          discountCode: promo?.code,
         })
         body.stripePaymentIntentId = piId
       }
@@ -547,11 +595,61 @@ export default function CheckoutPage() {
                   </div>
                 ))}
               </div>
-              <div className="border-t border-brand-warm/40 pt-3 space-y-2 text-sm">
+              {/* Promo code */}
+              <div className="border-t border-brand-warm/40 pt-3 mb-3">
+                {promo ? (
+                  <div className="flex items-center justify-between rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm">
+                    <span className="text-green-800">
+                      Code <span className="font-semibold">{promo.code}</span> applied
+                    </span>
+                    <button
+                      type="button"
+                      onClick={clearPromo}
+                      className="text-xs text-green-700 underline hover:text-green-900"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={promoInput}
+                      onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          applyPromo()
+                        }
+                      }}
+                      placeholder="Promo code"
+                      className="input flex-1 text-sm uppercase"
+                      aria-label="Promo code"
+                    />
+                    <button
+                      type="button"
+                      onClick={applyPromo}
+                      disabled={promoChecking || !promoInput.trim()}
+                      className="btn-secondary whitespace-nowrap text-sm disabled:opacity-50"
+                    >
+                      {promoChecking ? '…' : 'Apply'}
+                    </button>
+                  </div>
+                )}
+                {promoError && <p className="mt-1.5 text-xs text-red-600">{promoError}</p>}
+              </div>
+
+              <div className="space-y-2 text-sm">
                 <div className="flex justify-between text-brand-brown">
                   <span>Subtotal</span>
                   <span>{formatMoney(subtotal)}</span>
                 </div>
+                {discount > 0 && (
+                  <div className="flex justify-between text-green-700">
+                    <span>Discount{promo ? ` (${promo.code})` : ''}</span>
+                    <span>−{formatMoney(discount)}</span>
+                  </div>
+                )}
                 {fulfillment === 'SHIP' && (
                   <div className="flex justify-between text-brand-brown">
                     <span>Shipping</span>
