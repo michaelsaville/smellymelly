@@ -26,6 +26,8 @@ type Material = {
   packageUnit: string
   supplier: string | null
   notes: string | null
+  onHand: number
+  reorderPoint: number | null
   isActive: boolean
 }
 
@@ -47,6 +49,8 @@ export default function MaterialManager({
   const [unit, setUnit] = useState('oz')
   const [supplier, setSupplier] = useState('')
   const [notes, setNotes] = useState('')
+  const [onHand, setOnHand] = useState('')
+  const [reorderPoint, setReorderPoint] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   function resetForm() {
@@ -56,6 +60,8 @@ export default function MaterialManager({
     setUnit('oz')
     setSupplier('')
     setNotes('')
+    setOnHand('')
+    setReorderPoint('')
     setEditId(null)
     setShowForm(false)
     setError(null)
@@ -68,6 +74,8 @@ export default function MaterialManager({
     setUnit(m.packageUnit)
     setSupplier(m.supplier ?? '')
     setNotes(m.notes ?? '')
+    setOnHand(m.onHand?.toString() ?? '')
+    setReorderPoint(m.reorderPoint?.toString() ?? '')
     setEditId(m.id)
     setShowForm(true)
   }
@@ -85,6 +93,8 @@ export default function MaterialManager({
       packageUnit: unit,
       supplier,
       notes,
+      onHand,
+      reorderPoint,
     }
 
     try {
@@ -246,6 +256,34 @@ export default function MaterialManager({
                 placeholder="Amazon, Bramble Berry, etc."
               />
             </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-brand-brown">
+                On hand ({unit})
+              </label>
+              <input
+                type="number"
+                step="any"
+                min="0"
+                value={onHand}
+                onChange={(e) => setOnHand(e.target.value)}
+                className="input"
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-brand-brown">
+                Reorder at ({unit})
+              </label>
+              <input
+                type="number"
+                step="any"
+                min="0"
+                value={reorderPoint}
+                onChange={(e) => setReorderPoint(e.target.value)}
+                className="input"
+                placeholder="optional"
+              />
+            </div>
             <div className="col-span-2 sm:col-span-1">
               <label className="mb-1 block text-sm font-medium text-brand-brown">
                 Notes
@@ -297,6 +335,7 @@ export default function MaterialManager({
                 <th className="py-2 pr-4">Package</th>
                 <th className="py-2 pr-4">Cost</th>
                 <th className="py-2 pr-4">Cost/Unit</th>
+                <th className="py-2 pr-4">On hand</th>
                 <th className="py-2 pr-4">Supplier</th>
                 <th className="py-2" />
               </tr>
@@ -320,6 +359,14 @@ export default function MaterialManager({
                   </td>
                   <td className="py-2 pr-4 text-brand-brown/70">
                     {costPerUnit(m)}/{m.packageUnit}
+                  </td>
+                  <td className="py-2 pr-4 text-brand-brown/70">
+                    {m.onHand} {m.packageUnit}
+                    {m.reorderPoint != null && m.onHand <= m.reorderPoint && (
+                      <span className="ml-1 rounded-full bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[10px] font-medium">
+                        low
+                      </span>
+                    )}
                   </td>
                   <td className="py-2 pr-4 text-brand-brown/50">
                     {m.supplier || '—'}

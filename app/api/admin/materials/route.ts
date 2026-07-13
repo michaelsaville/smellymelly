@@ -39,6 +39,8 @@ export async function POST(req: NextRequest) {
         packageUnit: body.packageUnit,
         supplier: body.supplier?.trim() || null,
         notes: body.notes?.trim() || null,
+        onHand: body.onHand ? parseFloat(body.onHand) || 0 : 0,
+        reorderPoint: body.reorderPoint ? parseFloat(body.reorderPoint) : null,
       },
     })
 
@@ -75,6 +77,11 @@ export async function PUT(req: NextRequest) {
         packageUnit: body.packageUnit || undefined,
         supplier: body.supplier !== undefined ? (body.supplier?.trim() || null) : undefined,
         notes: body.notes !== undefined ? (body.notes?.trim() || null) : undefined,
+        onHand: body.onHand !== undefined && body.onHand !== '' ? parseFloat(body.onHand) : undefined,
+        reorderPoint:
+          body.reorderPoint !== undefined
+            ? body.reorderPoint === '' ? null : parseFloat(body.reorderPoint)
+            : undefined,
         isActive: body.isActive,
       },
     })
