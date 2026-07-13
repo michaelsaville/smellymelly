@@ -7,6 +7,7 @@ import {
   SEGMENT_LABELS,
   segmentWhere,
 } from '@/app/lib/customer-segments'
+import { materialItemCost, UNIT_LABELS } from '@/app/lib/units'
 
 async function checkAdmin(): Promise<boolean> {
   const cookieStore = await cookies()
@@ -236,6 +237,127 @@ const tools: Anthropic.Tool[] = [
     name: 'list_materials',
     description: 'List all raw materials in inventory',
     input_schema: { type: 'object' as const, properties: {}, required: [] },
+  },
+  {
+    name: 'list_recipes',
+    description:
+      'List all recipes with their computed cost of goods: batch cost, per-unit cost (batch ÷ yield), and every ingredient line. Use this to see the recipe cost matrix, or before editing a recipe to get its recipeId.',
+    input_schema: { type: 'object' as const, properties: {}, required: [] },
+  },
+  {
+    name: 'create_recipe',
+    description:
+      'Create a recipe that links raw materials (ingredients) to a product to compute cost of goods. Ingredients can be given by material NAME (preferred — resolved automatically) or by materialId. Returns the created recipe with its computed batch and per-unit cost. If an ingredient name is not in the materials inventory, create it first with create_material.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: { type: 'string', description: 'Recipe name, e.g. "Body Scrub — Lemon Frost"' },
+        productName: {
+          type: 'string',
+          description:
+            'Optional: name of the product this recipe makes (linked by fuzzy match). Omit if it is not tied to one product.',
+        },
+        yields: { type: 'number', description: 'How many finished units one batch makes. Defaults to 1.' },
+        notes: { type: 'string', description: 'Optional notes' },
+        items: {
+          type: 'array',
+          description: 'The ingredient lines that make up the recipe.',
+          items: {
+            type: 'object',
+            properties: {
+              materialName: {
+                type: 'string',
+                description: 'Ingredient name as it appears in materials, e.g. "Shea Butter"',
+              },
+              materialId: { type: 'string', description: 'Material id (use instead of materialName if known)' },
+              quantity: { type: 'number', description: 'How much of the material this recipe uses' },
+              unit: {
+                type: 'string',
+                description: 'Unit: oz, g, lb, kg, fl_oz, ml, L, cups, tbsp, tsp, drops, count',
+              },
+            },
+            required: ['quantity', 'unit'],
+          },
+        },
+      },
+      required: ['name', 'items'],
+    },
+  },
+  {
+    name: 'add_recipe_items',
+    description:
+      'Append one or more ingredient lines to an existing recipe (does NOT remove existing lines). Use list_recipes first to get the recipeId. Ingredients by material name or materialId.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        recipeId: { type: 'string', description: 'The recipe to add ingredients to' },
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              materialName: { type: 'string' },
+              materialId: { type: 'string' },
+              quantity: { type: 'number' },
+              unit: {
+                type: 'string',
+                description: 'oz, g, lb, kg, fl_oz, ml, L, cups, tbsp, tsp, drops, count',
+              },
+            },
+            required: ['quantity', 'unit'],
+          },
+        },
+      },
+      required: ['recipeId', 'items'],
+    },
+  },
+  {
+    name: 'update_recipe',
+    description:
+      "Update a recipe's name, yield, linked product, or notes. Optionally REPLACE all ingredient lines by passing items (this clears the existing lines first — to only ADD lines use add_recipe_items instead). Use list_recipes to get the recipeId.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        recipeId: { type: 'string', description: 'The recipe to update' },
+        name: { type: 'string' },
+        productName: {
+          type: 'string',
+          description: 'Link to this product by name; pass an empty string to unlink from any product.',
+        },
+        yields: { type: 'number' },
+        notes: { type: 'string' },
+        items: {
+          type: 'array',
+          description: 'If provided, REPLACES every existing ingredient line. Omit to leave the ingredients untouched.',
+          items: {
+            type: 'object',
+            properties: {
+              materialName: { type: 'string' },
+              materialId: { type: 'string' },
+              quantity: { type: 'number' },
+              unit: {
+                type: 'string',
+                description: 'oz, g, lb, kg, fl_oz, ml, L, cups, tbsp, tsp, drops, count',
+              },
+            },
+            required: ['quantity', 'unit'],
+          },
+        },
+      },
+      required: ['recipeId'],
+    },
+  },
+  {
+    name: 'delete_recipe',
+    description:
+      'Delete a recipe permanently. Use list_recipes to get the recipeId. Confirm with Melly before calling.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        recipeId: { type: 'string', description: 'The recipe to delete' },
+      },
+      required: ['recipeId'],
+    },
   },
   {
     name: 'get_inventory_summary',
@@ -507,6 +629,126 @@ const BRAND_TAG_COLORS = [
   '#b8454b',
   '#4a6fa5',
 ]
+
+// ── Recipe helpers ───────────────────────────────────────────────────────
+
+// The include shape used everywhere a full recipe is returned.
+const RECIPE_INCLUDE = {
+  product: { select: { id: true, name: true } },
+  items: { include: { material: true } },
+} as const
+
+type ResolvedRecipeItem = { materialId: string; quantity: number; unit: string }
+
+// Resolve recipe-item inputs (each carrying materialName OR materialId) to
+// concrete material ids, so Melly can speak ingredient names and never touch an
+// id. Validates quantity + unit up front and returns a friendly error string
+// (surfaced back to the AI) rather than throwing.
+async function resolveRecipeItems(
+  rawItems: any[],
+): Promise<{ ok: true; items: ResolvedRecipeItem[] } | { ok: false; error: string }> {
+  if (!Array.isArray(rawItems) || rawItems.length === 0) {
+    return { ok: false, error: 'No ingredient lines were given.' }
+  }
+  const materials = await prisma.sM_Material.findMany({ where: { isActive: true } })
+  const byId = new Map(materials.map((m) => [m.id, m]))
+  const resolved: ResolvedRecipeItem[] = []
+
+  for (const raw of rawItems) {
+    const quantity = typeof raw.quantity === 'number' ? raw.quantity : parseFloat(raw.quantity)
+    const label = raw.materialName || raw.materialId || 'an ingredient'
+    if (!quantity || quantity <= 0) {
+      return { ok: false, error: `Every ingredient needs a positive quantity (got "${raw.quantity}" for ${label}).` }
+    }
+    const unit = String(raw.unit || '').trim()
+    if (!(unit in UNIT_LABELS)) {
+      return { ok: false, error: `"${unit}" is not a valid unit. Use one of: ${Object.keys(UNIT_LABELS).join(', ')}.` }
+    }
+
+    let material = raw.materialId ? byId.get(raw.materialId) : undefined
+    if (!material && raw.materialName) {
+      const needle = String(raw.materialName).trim().toLowerCase()
+      const exact = materials.filter((m) => m.name.toLowerCase() === needle)
+      const partial = materials.filter((m) => m.name.toLowerCase().includes(needle))
+      const hits = exact.length ? exact : partial
+      if (hits.length === 1) material = hits[0]
+      else if (hits.length === 0) {
+        return {
+          ok: false,
+          error: `No material named "${raw.materialName}" is in inventory. Available: ${materials.map((m) => m.name).join(', ') || '(none yet)'}. Add it with create_material first.`,
+        }
+      } else {
+        return {
+          ok: false,
+          error: `"${raw.materialName}" matches more than one material (${hits.map((m) => m.name).join(', ')}). Be more specific.`,
+        }
+      }
+    }
+    if (!material) {
+      return { ok: false, error: `Each ingredient needs a materialName or a valid materialId (problem near ${label}).` }
+    }
+    resolved.push({ materialId: material.id, quantity, unit })
+  }
+  return { ok: true, items: resolved }
+}
+
+// Resolve an optional productName to { productId, warning }. Returns
+// productId=undefined to mean "leave unchanged"; null to mean "unlinked".
+async function resolveRecipeProduct(
+  productName: string | undefined,
+  { allowUnchanged }: { allowUnchanged: boolean },
+): Promise<{ productId: string | null | undefined; warning?: string }> {
+  if (productName === undefined) return { productId: allowUnchanged ? undefined : null }
+  const needle = String(productName).trim()
+  if (!needle) return { productId: null }
+  const p = await prisma.sM_Product.findFirst({
+    where: { name: { contains: needle, mode: 'insensitive' } },
+    select: { id: true },
+  })
+  if (p) return { productId: p.id }
+  return { productId: null, warning: `No product matched "${productName}", so the recipe isn't linked to a product.` }
+}
+
+// Build an AI/human-friendly summary with the computed cost matrix. Uses the
+// same materialItemCost helper as the admin UI so numbers match exactly.
+function summarizeRecipe(recipe: any) {
+  let batchCents = 0
+  const warnings: string[] = []
+  const ingredients = recipe.items.map((it: any) => {
+    let costCents: number | null = null
+    try {
+      costCents = materialItemCost(
+        it.material.packageCostCents,
+        it.material.packageSize,
+        it.material.packageUnit,
+        it.quantity,
+        it.unit,
+      )
+      batchCents += costCents
+    } catch {
+      warnings.push(
+        `Can't cost ${it.quantity} ${it.unit} of ${it.material.name} — it's bought by ${it.material.packageUnit} (different unit type).`,
+      )
+    }
+    return {
+      material: it.material.name,
+      quantity: it.quantity,
+      unit: it.unit,
+      cost: costCents == null ? '(unit mismatch)' : `$${(costCents / 100).toFixed(2)}`,
+    }
+  })
+  const yields = recipe.yields > 0 ? recipe.yields : 1
+  return {
+    id: recipe.id,
+    name: recipe.name,
+    product: recipe.product?.name ?? null,
+    yields: recipe.yields,
+    batchCost: `$${(batchCents / 100).toFixed(2)}`,
+    perUnitCost: `$${(batchCents / yields / 100).toFixed(2)}`,
+    ingredients,
+    ...(warnings.length ? { warnings } : {}),
+  }
+}
 
 async function executeTool(
   name: string,
@@ -906,6 +1148,117 @@ async function executeTool(
           supplier: m.supplier,
         })),
       )
+    }
+
+    case 'list_recipes': {
+      const recipes = await prisma.sM_Recipe.findMany({
+        include: RECIPE_INCLUDE,
+        orderBy: { name: 'asc' },
+      })
+      if (recipes.length === 0) {
+        return JSON.stringify({ recipes: [], note: 'No recipes yet.' })
+      }
+      return JSON.stringify({ recipes: recipes.map(summarizeRecipe) })
+    }
+
+    case 'create_recipe': {
+      const resolved = await resolveRecipeItems(input.items)
+      if (!resolved.ok) return JSON.stringify({ success: false, error: resolved.error })
+
+      const { productId, warning } = await resolveRecipeProduct(input.productName, { allowUnchanged: false })
+
+      const recipe = await prisma.sM_Recipe.create({
+        data: {
+          name: String(input.name).trim(),
+          productId: productId ?? null,
+          yields: input.yields != null ? Math.max(1, Math.round(input.yields)) : 1,
+          notes: input.notes?.trim() || null,
+          items: { create: resolved.items },
+        },
+        include: RECIPE_INCLUDE,
+      })
+      return JSON.stringify({
+        success: true,
+        recipe: summarizeRecipe(recipe),
+        ...(warning ? { warning } : {}),
+      })
+    }
+
+    case 'add_recipe_items': {
+      const exists = await prisma.sM_Recipe.findUnique({
+        where: { id: input.recipeId },
+        select: { id: true },
+      })
+      if (!exists) {
+        return JSON.stringify({ success: false, error: 'No recipe with that id. Use list_recipes to find it.' })
+      }
+      const resolved = await resolveRecipeItems(input.items)
+      if (!resolved.ok) return JSON.stringify({ success: false, error: resolved.error })
+
+      await prisma.sM_RecipeItem.createMany({
+        data: resolved.items.map((it) => ({ recipeId: input.recipeId, ...it })),
+      })
+      const recipe = await prisma.sM_Recipe.findUnique({
+        where: { id: input.recipeId },
+        include: RECIPE_INCLUDE,
+      })
+      return JSON.stringify({ success: true, recipe: summarizeRecipe(recipe) })
+    }
+
+    case 'update_recipe': {
+      const exists = await prisma.sM_Recipe.findUnique({
+        where: { id: input.recipeId },
+        select: { id: true },
+      })
+      if (!exists) {
+        return JSON.stringify({ success: false, error: 'No recipe with that id. Use list_recipes to find it.' })
+      }
+
+      const { productId, warning } = await resolveRecipeProduct(input.productName, { allowUnchanged: true })
+
+      let resolvedItems: ResolvedRecipeItem[] | undefined
+      if (input.items !== undefined) {
+        const resolved = await resolveRecipeItems(input.items)
+        if (!resolved.ok) return JSON.stringify({ success: false, error: resolved.error })
+        resolvedItems = resolved.items
+      }
+
+      await prisma.sM_Recipe.update({
+        where: { id: input.recipeId },
+        data: {
+          name: input.name?.trim() || undefined,
+          productId,
+          yields: input.yields != null ? Math.max(1, Math.round(input.yields)) : undefined,
+          notes: input.notes !== undefined ? input.notes?.trim() || null : undefined,
+        },
+      })
+      if (resolvedItems !== undefined) {
+        await prisma.sM_RecipeItem.deleteMany({ where: { recipeId: input.recipeId } })
+        if (resolvedItems.length) {
+          await prisma.sM_RecipeItem.createMany({
+            data: resolvedItems.map((it) => ({ recipeId: input.recipeId, ...it })),
+          })
+        }
+      }
+      const recipe = await prisma.sM_Recipe.findUnique({
+        where: { id: input.recipeId },
+        include: RECIPE_INCLUDE,
+      })
+      return JSON.stringify({
+        success: true,
+        recipe: summarizeRecipe(recipe),
+        ...(warning ? { warning } : {}),
+      })
+    }
+
+    case 'delete_recipe': {
+      const recipe = await prisma.sM_Recipe.findUnique({
+        where: { id: input.recipeId },
+        select: { name: true },
+      })
+      if (!recipe) return JSON.stringify({ success: false, error: 'No recipe with that id.' })
+      await prisma.sM_Recipe.delete({ where: { id: input.recipeId } })
+      return JSON.stringify({ success: true, deleted: recipe.name })
     }
 
     case 'get_inventory_summary': {
@@ -1456,6 +1809,14 @@ You also know Melly's customers — rows are auto-created from orders and dedupe
 When answering "who are my top customers?", prefer list_customers with a limit of 5–10 — the results are already sorted by lifetime spend. For "who hasn't ordered lately?" use segment=dormant. Be concise — present customers as a short bulleted list with name, order count, and total spend; don't dump raw JSON.
 
 Do NOT attempt to email customers, run marketing campaigns, or text people — those integrations aren't built yet. If Melly asks, tell her it's coming in a future phase and offer to tag or note the customers instead so she has a list ready.
+
+Recipes & cost of goods:
+- A recipe lists the raw materials (ingredients) that go into a product — each with a quantity + unit — plus how many finished units one batch yields. From that we compute batch cost and per-unit cost: the cost matrix.
+- list_recipes shows every recipe with its computed batch cost, per-unit cost, and ingredient breakdown.
+- create_recipe builds a new one. Pass ingredients by material NAME (e.g. "4 oz shea butter") — no need to look up ids. If an ingredient isn't in the materials inventory yet, create it first with create_material (you'll need its package cost + package size), then include it in the recipe.
+- add_recipe_items appends ingredients to an existing recipe; update_recipe changes name/yield/linked product/notes and can REPLACE all ingredients at once; delete_recipe removes a recipe (confirm with Melly first).
+- Valid units: oz, g, lb, kg, fl_oz, ml, L, cups, tbsp, tsp, drops, count. An ingredient's unit and the unit its material was purchased in must be the same type (weight-vs-weight or volume-vs-volume) or that line's cost can't be computed — the tool will tell you if so.
+- After building or changing a recipe, read the per-unit cost back to Melly so she knows her cost of goods.
 
 {{STYLE_SAMPLES}}
 Categories (the product groups shown on /shop):
