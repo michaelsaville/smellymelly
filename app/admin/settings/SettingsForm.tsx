@@ -32,6 +32,7 @@ interface Props {
   announcementActive: boolean
   announcementText: string
   announcementLink: string
+  posHideOutOfStock: boolean
   categories: CategoryTemplate[]
   allergens: AllergenRow[]
 }
@@ -48,6 +49,7 @@ export default function SettingsForm({
   announcementActive: initialAnnounceActive,
   announcementText: initialAnnounceText,
   announcementLink: initialAnnounceLink,
+  posHideOutOfStock: initialPosHideOOS,
   categories: initialCategories,
   allergens: initialAllergens,
 }: Props) {
@@ -67,6 +69,7 @@ export default function SettingsForm({
   const [announcementActive, setAnnouncementActive] = useState(initialAnnounceActive)
   const [announcementText, setAnnouncementText] = useState(initialAnnounceText)
   const [announcementLink, setAnnouncementLink] = useState(initialAnnounceLink)
+  const [posHideOutOfStock, setPosHideOutOfStock] = useState(initialPosHideOOS)
   const [categories, setCategories] = useState<CategoryTemplate[]>(initialCategories)
   const [allergens, setAllergens] = useState<AllergenRow[]>(initialAllergens)
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -172,6 +175,7 @@ export default function SettingsForm({
           announcementActive,
           announcementText: announcementText.trim(),
           announcementLink: announcementLink.trim(),
+          posHideOutOfStock,
           categories: categories.map((c) => ({
             id: c.id,
             baseIngredients: c.baseIngredients.trim(),
@@ -468,6 +472,27 @@ export default function SettingsForm({
             </p>
           </div>
         </div>
+      </div>
+
+      <div className="card">
+        <h2 className="font-display text-lg font-semibold text-brand-dark mb-1">
+          Point of Sale
+        </h2>
+        <p className="text-xs text-brand-brown/60 mb-4">
+          Options for the New Sale ring-up screen. This can also be toggled directly
+          on the POS while you work.
+        </p>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={posHideOutOfStock}
+            onChange={(e) => setPosHideOutOfStock(e.target.checked)}
+            className="h-4 w-4 rounded border-brand-warm text-brand-terra focus:ring-brand-terra"
+          />
+          <span className="text-sm font-medium text-brand-brown">
+            Hide out-of-stock items from the New Sale catalog
+          </span>
+        </label>
       </div>
 
       <div className="card">

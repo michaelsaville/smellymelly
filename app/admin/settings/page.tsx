@@ -48,6 +48,7 @@ export default async function SettingsPage() {
         announcementActive={settings?.announcementActive ?? false}
         announcementText={settings?.announcementText ?? ''}
         announcementLink={settings?.announcementLink ?? ''}
+        posHideOutOfStock={settings?.posHideOutOfStock ?? false}
         categories={categories.map((c) => ({
           id: c.id,
           name: c.name,
