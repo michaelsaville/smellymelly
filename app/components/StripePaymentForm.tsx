@@ -82,7 +82,12 @@ const StripePaymentForm = forwardRef<StripeFormHandle, { disabled?: boolean }>(
 
     return (
       <div className={`rounded-lg border border-brand-warm/60 p-4 ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
-        <PaymentElement options={{ layout: 'tabs' }} />
+        {/* Apple Pay / Google Pay show as express buttons here automatically on
+            supported devices — the smellymellys.net domain is registered with
+            Stripe (payment_method_domains) so both are active. */}
+        <PaymentElement
+          options={{ layout: 'tabs', wallets: { applePay: 'auto', googlePay: 'auto' } }}
+        />
       </div>
     )
   },
