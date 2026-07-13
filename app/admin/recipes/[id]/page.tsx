@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { requireAdmin } from '@/app/lib/admin-auth'
 import { prisma } from '@/app/lib/prisma'
 import RecipeForm from '../RecipeForm'
+import MakeBatchPanel from './MakeBatchPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,7 +17,19 @@ export default async function EditRecipePage({
   const [recipe, materials, products] = await Promise.all([
     prisma.sM_Recipe.findUnique({
       where: { id },
-      include: { items: true },
+      include: {
+        items: true,
+        product: {
+          select: {
+            name: true,
+            variants: {
+              where: { isActive: true },
+              orderBy: { name: 'asc' },
+              select: { id: true, name: true, stockQuantity: true },
+            },
+          },
+        },
+      },
     }),
     prisma.sM_Material.findMany({
       where: { isActive: true },
@@ -41,6 +54,13 @@ export default async function EditRecipePage({
           &larr; Back to Recipes
         </a>
       </div>
+
+      <MakeBatchPanel
+        recipeId={recipe.id}
+        yields={recipe.yields}
+        productName={recipe.product?.name ?? null}
+        variants={recipe.product?.variants ?? []}
+      />
 
       <RecipeForm
         materials={materials}
