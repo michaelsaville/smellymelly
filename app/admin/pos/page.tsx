@@ -4,18 +4,39 @@ import PosClient from './PosClient'
 
 export const dynamic = 'force-dynamic'
 
+// Variant names encode "Scent - Size" (e.g. "Blueberry - 2oz"), or a bare scent
+// when there's a single size, or a bare size. Split them so the POS can group
+// product → size → scent. Mirrors app/shop/[slug]/AddToCart.tsx.
+const SIZE_RE = /^(\d+(?:\.\d+)?)\s*(oz|ml|g|lb)$/i
+
+function parseVariant(name: string): { scent: string; size: string } {
+  const idx = name.lastIndexOf(' - ')
+  if (idx >= 0) {
+    const tail = name.slice(idx + 3).trim()
+    if (SIZE_RE.test(tail)) {
+      return { scent: name.slice(0, idx).trim(), size: tail.toLowerCase() }
+    }
+  }
+  // No "scent - size": a bare size is size-only, anything else is scent-only.
+  const trimmed = name.trim()
+  if (SIZE_RE.test(trimmed)) return { scent: '', size: trimmed.toLowerCase() }
+  return { scent: trimmed, size: '' }
+}
+
 export default async function PosPage() {
   await requireAdmin()
 
   const [variants, settings] = await Promise.all([
     prisma.sM_ProductVariant.findMany({
       where: { isActive: true, product: { isActive: true } },
-      include: { product: { select: { name: true, scent: true } } },
+      include: {
+        product: { select: { id: true, name: true, category: { select: { name: true } } } },
+      },
       orderBy: [{ product: { name: 'asc' } }, { name: 'asc' }],
     }),
     prisma.sM_Settings.findFirst({
       where: { id: 'singleton' },
-      select: { taxRate: true },
+      select: { taxRate: true, posHideOutOfStock: true },
     }),
   ])
 
@@ -28,14 +49,20 @@ export default async function PosPage() {
 
       <PosClient
         taxRate={settings?.taxRate ?? 0.06}
-        variants={variants.map((v) => ({
-          id: v.id,
-          label: v.product.name,
-          sublabel: v.name,
-          scent: v.product.scent,
-          priceCents: v.priceCents,
-          stock: v.stockQuantity,
-        }))}
+        hideOutOfStock={settings?.posHideOutOfStock ?? false}
+        variants={variants.map((v) => {
+          const { scent, size } = parseVariant(v.name)
+          return {
+            id: v.id,
+            productId: v.product.id,
+            product: v.product.name,
+            category: v.product.category?.name ?? null,
+            scent,
+            size,
+            priceCents: v.priceCents,
+            stock: v.stockQuantity,
+          }
+        })}
       />
     </div>
   )

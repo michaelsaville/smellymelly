@@ -33,6 +33,7 @@ interface Body {
   announcementActive?: boolean
   announcementText?: string
   announcementLink?: string
+  posHideOutOfStock?: boolean
   categories?: CategoryUpdate[]
   allergens?: AllergenInput[]
 }
@@ -55,6 +56,7 @@ export async function POST(req: NextRequest) {
     announcementActive?: boolean
     announcementText?: string
     announcementLink?: string
+    posHideOutOfStock?: boolean
   } = {}
 
   if (typeof body.businessEmail === 'string') {
@@ -88,6 +90,9 @@ export async function POST(req: NextRequest) {
   }
   if (typeof body.announcementLink === 'string') {
     data.announcementLink = body.announcementLink.trim()
+  }
+  if (typeof body.posHideOutOfStock === 'boolean') {
+    data.posHideOutOfStock = body.posHideOutOfStock
   }
   if (typeof body.menuOrientation === 'string') {
     const v = body.menuOrientation.toUpperCase()

@@ -6,9 +6,11 @@ import { createPosSale } from '@/app/lib/actions/pos'
 
 interface PosVariant {
   id: string
-  label: string // product name
-  sublabel: string // variant name
-  scent: string | null
+  productId: string
+  product: string // product name = the item "type"
+  category: string | null
+  scent: string // parsed; '' when the variant has no scent
+  size: string // parsed; '' when the variant has no size
   priceCents: number
   stock: number
 }
@@ -17,31 +19,68 @@ function money(cents: number) {
   return `$${(cents / 100).toFixed(2)}`
 }
 
+function sizeWeight(size: string): number {
+  const m = size.match(/^(\d+(?:\.\d+)?)/)
+  return m ? parseFloat(m[1]) : Number.POSITIVE_INFINITY
+}
+
+function variantLabel(v: PosVariant): string {
+  return [v.scent, v.size].filter(Boolean).join(' · ') || 'Standard'
+}
+
+type SizeGroup = { size: string; variants: PosVariant[] }
+type ProductGroup = { productId: string; product: string; category: string | null; sizes: SizeGroup[] }
+
 export default function PosClient({
   variants,
   taxRate,
+  hideOutOfStock: hideInitial,
 }: {
   variants: PosVariant[]
   taxRate: number
+  hideOutOfStock: boolean
 }) {
   const router = useRouter()
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState<Record<string, number>>({})
   const [taxable, setTaxable] = useState(true)
   const [paymentNote, setPaymentNote] = useState('Cash')
+  const [hideOOS, setHideOOS] = useState(hideInitial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<{ orderNumber: number } | null>(null)
 
   const vMap = useMemo(() => new Map(variants.map((v) => [v.id, v])), [variants])
 
-  const filtered = useMemo(() => {
+  // Filter by search + out-of-stock preference, then group product → size → scent.
+  const groups = useMemo<ProductGroup[]>(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return variants
-    return variants.filter((v) =>
-      [v.label, v.sublabel, v.scent ?? ''].join(' ').toLowerCase().includes(q),
-    )
-  }, [variants, search])
+    const filtered = variants.filter((v) => {
+      if (hideOOS && v.stock <= 0) return false
+      if (!q) return true
+      return [v.product, v.scent, v.size, v.category ?? ''].join(' ').toLowerCase().includes(q)
+    })
+
+    const byProduct = new Map<string, ProductGroup>()
+    for (const v of filtered) {
+      let g = byProduct.get(v.productId)
+      if (!g) {
+        g = { productId: v.productId, product: v.product, category: v.category, sizes: [] }
+        byProduct.set(v.productId, g)
+      }
+      let sg = g.sizes.find((s) => s.size === v.size)
+      if (!sg) {
+        sg = { size: v.size, variants: [] }
+        g.sizes.push(sg)
+      }
+      sg.variants.push(v)
+    }
+    // Sort sizes within each product by weight (2oz before 8oz; sizeless last).
+    for (const g of byProduct.values()) {
+      g.sizes.sort((a, b) => sizeWeight(a.size) - sizeWeight(b.size))
+    }
+    return Array.from(byProduct.values())
+  }, [variants, search, hideOOS])
 
   const lines = useMemo(
     () =>
@@ -69,6 +108,20 @@ export default function PosClient({
     const v = vMap.get(id)
     const capped = Math.max(0, Math.min(qty, v?.stock ?? qty))
     setCart((prev) => ({ ...prev, [id]: capped }))
+  }
+
+  async function toggleHideOOS(next: boolean) {
+    setHideOOS(next)
+    // Persist the preference; best-effort so the toggle stays snappy.
+    try {
+      await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ posHideOutOfStock: next }),
+      })
+    } catch {
+      // Non-fatal — the toggle still works for this session.
+    }
   }
 
   async function complete() {
@@ -125,53 +178,88 @@ export default function PosClient({
     <div className="grid gap-6 lg:grid-cols-[1fr_20rem] pb-24 lg:pb-0">
       {/* Catalog */}
       <div>
-        <input
-          type="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search products, scents…"
-          className="input w-full mb-3"
-        />
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {filtered.map((v) => {
-            const inCart = cart[v.id] ?? 0
-            const out = v.stock <= 0
-            return (
-              <button
-                key={v.id}
-                type="button"
-                onClick={() => add(v)}
-                disabled={out || inCart >= v.stock}
-                className={`relative rounded-xl border p-3 text-left transition-colors min-h-[76px] ${
-                  out
-                    ? 'border-brand-warm/40 bg-surface-muted opacity-50'
-                    : 'border-brand-warm/60 bg-white hover:border-brand-terra active:bg-brand-warm/40'
-                }`}
-              >
-                {inCart > 0 && (
-                  <span className="absolute -top-2 -right-2 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-brand-terra px-1 text-xs font-bold text-white">
-                    {inCart}
-                  </span>
-                )}
-                <div className="text-sm font-medium text-brand-dark leading-tight line-clamp-2">
-                  {v.label}
-                </div>
-                <div className="text-xs text-brand-brown/50 line-clamp-1">{v.sublabel}</div>
-                <div className="mt-1 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-brand-terra">{money(v.priceCents)}</span>
-                  <span className={`text-[11px] ${v.stock <= 5 ? 'text-amber-600' : 'text-brand-brown/40'}`}>
-                    {v.stock} left
-                  </span>
-                </div>
-              </button>
-            )
-          })}
-          {filtered.length === 0 && (
-            <p className="col-span-full text-sm text-brand-brown/50 py-6 text-center">
-              No products match “{search}”.
-            </p>
-          )}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-4">
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search products, scents…"
+            className="input w-full sm:flex-1"
+          />
+          <label className="flex items-center gap-2 text-sm text-brand-brown/80 whitespace-nowrap">
+            <input
+              type="checkbox"
+              checked={hideOOS}
+              onChange={(e) => toggleHideOOS(e.target.checked)}
+              className="h-4 w-4 rounded border-brand-warm text-brand-terra focus:ring-brand-terra"
+            />
+            Hide out of stock
+          </label>
         </div>
+
+        {groups.length === 0 ? (
+          <p className="text-sm text-brand-brown/50 py-8 text-center">
+            {search ? `No products match “${search}”.` : 'No products to show.'}
+          </p>
+        ) : (
+          <div className="space-y-5">
+            {groups.map((g) => (
+              <section key={g.productId} className="rounded-xl border border-brand-warm/50 bg-white p-3">
+                <div className="mb-2 flex items-baseline gap-2">
+                  <h3 className="font-display text-base font-semibold text-brand-dark">{g.product}</h3>
+                  {g.category && (
+                    <span className="text-[11px] uppercase tracking-wide text-brand-brown/40">{g.category}</span>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  {g.sizes.map((sg) => (
+                    <div key={sg.size || '_'}>
+                      {sg.size && (
+                        <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-brand-brown/50">
+                          {sg.size}
+                        </div>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        {sg.variants.map((v) => {
+                          const inCart = cart[v.id] ?? 0
+                          const out = v.stock <= 0
+                          return (
+                            <button
+                              key={v.id}
+                              type="button"
+                              onClick={() => add(v)}
+                              disabled={out || inCart >= v.stock}
+                              className={`relative min-h-[52px] rounded-lg border px-3 py-2 text-left transition-colors ${
+                                out
+                                  ? 'border-brand-warm/40 bg-surface-muted opacity-50'
+                                  : 'border-brand-warm/60 bg-white hover:border-brand-terra active:bg-brand-warm/40'
+                              }`}
+                            >
+                              {inCart > 0 && (
+                                <span className="absolute -top-2 -right-2 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-brand-terra px-1 text-[11px] font-bold text-white">
+                                  {inCart}
+                                </span>
+                              )}
+                              <div className="text-sm font-medium text-brand-dark leading-tight">
+                                {v.scent || 'Standard'}
+                              </div>
+                              <div className="mt-0.5 flex items-center gap-2 text-[11px]">
+                                <span className="font-semibold text-brand-terra">{money(v.priceCents)}</span>
+                                <span className={out ? 'text-red-500' : v.stock <= 5 ? 'text-amber-600' : 'text-brand-brown/40'}>
+                                  {out ? 'out' : `${v.stock} left`}
+                                </span>
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Cart / tender */}
@@ -186,8 +274,8 @@ export default function PosClient({
               {lines.map((l) => (
                 <div key={l.v.id} className="flex items-center gap-2 text-sm">
                   <div className="min-w-0 flex-1">
-                    <div className="font-medium text-brand-dark truncate">{l.v.label}</div>
-                    <div className="text-xs text-brand-brown/50 truncate">{l.v.sublabel}</div>
+                    <div className="font-medium text-brand-dark truncate">{l.v.product}</div>
+                    <div className="text-xs text-brand-brown/50 truncate">{variantLabel(l.v)}</div>
                   </div>
                   <div className="flex items-center rounded-lg border border-brand-warm/60">
                     <button

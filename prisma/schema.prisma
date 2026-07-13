@@ -745,6 +745,9 @@ model SM_Settings {
   announcementText   String  @default("")
   announcementLink   String  @default("")
 
+  // POS preference: hide out-of-stock items from the New Sale catalog.
+  posHideOutOfStock Boolean @default(false)
+
   // Manual payment handles — shown on the order confirmation screen + email
   // when the buyer picks "Pay directly via Venmo / Cash App" at checkout.
   venmoHandle         String @default("")
