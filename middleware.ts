@@ -45,6 +45,12 @@ function isMaintenancePath(pathname: string): boolean {
   return pathname === '/maintenance' || pathname.startsWith('/maintenance/')
 }
 
+// Customer-facing invoice pay links are targeted (sent to one customer) and must
+// keep working while the storefront is in maintenance mode.
+function isInvoicePath(pathname: string): boolean {
+  return pathname.startsWith('/invoice/') || pathname.startsWith('/api/invoice/')
+}
+
 // Public API routes that would let someone place an order or otherwise write
 // through while maintenance is on. These get a 503 instead of a page rewrite.
 function isBlockablePublicApi(pathname: string): boolean {
@@ -57,8 +63,8 @@ function isBlockablePublicApi(pathname: string): boolean {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
-  // Always let admin + maintenance page through untouched.
-  if (isAdminPath(pathname) || isMaintenancePath(pathname)) {
+  // Always let admin + maintenance page + invoice pay links through untouched.
+  if (isAdminPath(pathname) || isMaintenancePath(pathname) || isInvoicePath(pathname)) {
     return NextResponse.next()
   }
 

@@ -2,8 +2,28 @@
 
 import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
+import { randomUUID } from 'crypto'
 import type { SM_InvoiceStatus } from '@prisma/client'
 import { prisma } from '@/app/lib/prisma'
+
+/** Unguessable token for the customer-facing pay page. */
+function newPayToken(): string {
+  return `${randomUUID()}${randomUUID()}`.replace(/-/g, '')
+}
+
+/**
+ * Returns the invoice's pay token, generating one if the row predates the
+ * feature. Admin-only (called when rendering the admin invoice detail page).
+ */
+export async function ensureInvoicePayToken(id: string): Promise<string | null> {
+  await requireAdmin()
+  const inv = await prisma.sM_Invoice.findUnique({ where: { id }, select: { payToken: true } })
+  if (!inv) return null
+  if (inv.payToken) return inv.payToken
+  const payToken = newPayToken()
+  await prisma.sM_Invoice.update({ where: { id }, data: { payToken } })
+  return payToken
+}
 
 async function requireAdmin(): Promise<void> {
   const cookieStore = await cookies()
@@ -41,6 +61,7 @@ export async function createInvoice(data: {
       customerName,
       customerEmail: data.customerEmail?.trim() || null,
       notes: data.notes?.trim() || null,
+      payToken: newPayToken(),
       subtotalCents,
       taxCents,
       totalCents,

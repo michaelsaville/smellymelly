@@ -1,7 +1,9 @@
 import { redirect } from 'next/navigation'
 import { requireAdmin } from '@/app/lib/admin-auth'
 import { prisma } from '@/app/lib/prisma'
+import { ensureInvoicePayToken } from '@/app/lib/actions/invoices'
 import InvoiceActions from './InvoiceActions'
+import PayLinkBar from './PayLinkBar'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,6 +36,9 @@ export default async function InvoiceDetailPage({
   ])
   if (!invoice) redirect('/admin/invoices')
 
+  // Backfill a pay token for invoices created before this feature existed.
+  const payToken = invoice.payToken ?? (await ensureInvoicePayToken(invoice.id))
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4 print:hidden">
@@ -48,6 +53,12 @@ export default async function InvoiceDetailPage({
       <div className="mb-5">
         <InvoiceActions id={invoice.id} status={invoice.status} />
       </div>
+
+      {payToken && invoice.status !== 'CANCELLED' && (
+        <div className="mb-5 max-w-2xl mx-auto">
+          <PayLinkBar token={payToken} />
+        </div>
+      )}
 
       {/* Printable invoice */}
       <div className="card max-w-2xl mx-auto print:shadow-none print:border-0">

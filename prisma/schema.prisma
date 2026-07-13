@@ -559,6 +559,11 @@ model SM_Invoice {
   taxCents      Int @default(0)
   totalCents    Int
 
+  // Unguessable token for the customer-facing pay page (/invoice/[payToken]).
+  // Populated when the invoice is created; older rows get one on first admin view.
+  payToken              String? @unique
+  stripePaymentIntentId String?
+
   notes     String?
   sentAt    DateTime?
   paidAt    DateTime?
