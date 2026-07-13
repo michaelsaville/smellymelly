@@ -179,6 +179,13 @@ export default async function OrderConfirmationPage({
           <Link href="/shop" className="btn-primary">
             Continue Shopping
           </Link>
+          <p className="mt-4 text-sm text-brand-brown/60">
+            Check your order status anytime at{' '}
+            <Link href="/track" className="text-brand-terra hover:underline">
+              smellymellys.net/track
+            </Link>{' '}
+            (order #{order.orderNumber} + your email).
+          </p>
         </div>
       </div>
     </div>
