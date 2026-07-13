@@ -48,6 +48,7 @@ type Product = {
   categoryId: string
   isActive: boolean
   isFeatured: boolean
+  isGiftSet: boolean
   variants: Variant[]
   images: Image[]
 }
@@ -108,6 +109,7 @@ export default function EditProductForm({
   const [description, setDescription] = useState(product.description ?? '')
   const [ingredients, setIngredients] = useState(product.ingredients ?? '')
   const [isFeatured, setIsFeatured] = useState(product.isFeatured)
+  const [isGiftSet, setIsGiftSet] = useState(product.isGiftSet)
   const [isActive, setIsActive] = useState(product.isActive)
 
   // Variants — parse names into scent+size and sort stably by scent per size
@@ -272,6 +274,7 @@ export default function EditProductForm({
           description: description.trim() || null,
           ingredients: ingredients.trim() || null,
           isFeatured,
+          isGiftSet,
           isActive,
           variants: variantData,
         }),
@@ -374,6 +377,15 @@ export default function EditProductForm({
               className="rounded border-brand-warm text-brand-terra focus:ring-brand-terra"
             />
             Featured on homepage
+          </label>
+          <label className="flex items-center gap-2 text-sm text-brand-brown">
+            <input
+              type="checkbox"
+              checked={isGiftSet}
+              onChange={(e) => setIsGiftSet(e.target.checked)}
+              className="rounded border-brand-warm text-brand-terra focus:ring-brand-terra"
+            />
+            Gift set (show on /gifts)
           </label>
           <label className="flex items-center gap-2 text-sm text-brand-brown">
             <input

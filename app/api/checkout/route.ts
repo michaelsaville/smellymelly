@@ -23,6 +23,8 @@ interface CheckoutBody {
   stripePaymentIntentId?: string // Stripe PaymentIntent id, already confirmed client-side
   paymentMethod?: PaymentMethod
   shippingCentsOverride?: number // from rate calculation
+  isGift?: boolean
+  giftMessage?: string
 }
 
 export async function POST(req: NextRequest) {
@@ -174,6 +176,8 @@ export async function POST(req: NextRequest) {
         data: {
           status: paidNow ? 'PAID' : 'PENDING',
           fulfillment: body.fulfillment,
+          isGift: !!body.isGift,
+          giftMessage: body.isGift ? body.giftMessage?.trim() || null : null,
           customerName: body.customer.name.trim(),
           customerEmail: body.customer.email.trim(),
           customerPhone: body.customer.phone?.trim() || null,

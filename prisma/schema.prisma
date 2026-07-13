@@ -79,14 +79,36 @@ model SM_Product {
   category    SM_Category @relation(fields: [categoryId], references: [id])
   isActive    Boolean     @default(true)
   isFeatured  Boolean     @default(false)
+  /// Surfaces on the /gifts collection — curated gift sets / bundles.
+  isGiftSet   Boolean     @default(false)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
   variants SM_ProductVariant[]
   images   SM_ProductImage[]
   recipes  SM_Recipe[]
+  reviews  SM_Review[]
 
   @@map("sm_products")
+  @@schema("smellymelly")
+}
+
+/// Customer product reviews. New reviews land unapproved; Mel approves them
+/// in /admin/reviews before they show on the storefront.
+model SM_Review {
+  id         String     @id @default(cuid())
+  productId  String
+  product    SM_Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  authorName String
+  rating     Int // 1-5
+  title      String?
+  body       String     @db.Text
+  isApproved Boolean    @default(false)
+  createdAt  DateTime   @default(now())
+
+  @@index([productId])
+  @@index([isApproved])
+  @@map("sm_reviews")
   @@schema("smellymelly")
 }
 
@@ -283,6 +305,10 @@ model SM_Order {
   orderNumber Int                @unique @default(autoincrement())
   status      SM_OrderStatus     @default(PENDING)
   fulfillment SM_FulfillmentType
+
+  // Gift options chosen at checkout — giftMessage prints on the packing note.
+  isGift      Boolean @default(false)
+  giftMessage String?
 
   // Customer (populated post-checkout by upsertCustomerFromOrder)
   customerId String?
@@ -563,6 +589,10 @@ model SM_Material {
   packageUnit      String // oz, g, lb, ml, fl_oz, drops, count
   supplier         String? // where she buys it
   notes            String?
+  /// On-hand quantity in packageUnit; decremented when a batch is made.
+  onHand        Float  @default(0)
+  /// Alert threshold (packageUnit); at/below this it shows on the shopping list.
+  reorderPoint  Float?
   isActive         Boolean  @default(true)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -618,6 +648,23 @@ model SM_OrderView {
   updatedAt    DateTime @updatedAt
 
   @@map("sm_order_views")
+  @@schema("smellymelly")
+}
+
+/// Custom-order + wholesale requests submitted from the storefront.
+model SM_Inquiry {
+  id        String   @id @default(cuid())
+  type      String // 'CUSTOM' | 'WHOLESALE'
+  name      String
+  email     String
+  phone     String?
+  business  String? // wholesale business name
+  message   String   @db.Text
+  status    String   @default("NEW") // NEW | IN_PROGRESS | CLOSED
+  createdAt DateTime @default(now())
+
+  @@index([status])
+  @@map("sm_inquiries")
   @@schema("smellymelly")
 }
 

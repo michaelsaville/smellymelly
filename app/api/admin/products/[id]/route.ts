@@ -48,6 +48,7 @@ export async function PUT(
     description?: string | null
     ingredients?: string | null
     isFeatured?: boolean
+    isGiftSet?: boolean
     isActive?: boolean
     variants?: Array<{
       id?: string // existing variant ID (omit for new)
@@ -80,6 +81,7 @@ export async function PUT(
         description: body.description !== undefined ? (body.description || null) : existing.description,
         ingredients: body.ingredients !== undefined ? (body.ingredients || null) : existing.ingredients,
         isFeatured: body.isFeatured ?? existing.isFeatured,
+        isGiftSet: body.isGiftSet ?? existing.isGiftSet,
         isActive: body.isActive ?? existing.isActive,
       },
     })

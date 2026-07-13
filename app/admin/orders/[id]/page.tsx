@@ -84,6 +84,17 @@ export default async function OrderDetailPage({
         </span>
       </div>
 
+      {order.isGift && (
+        <div className="mb-6 rounded-xl border border-brand-terra/40 bg-brand-terra/5 p-4">
+          <div className="text-sm font-semibold text-brand-terra mb-1">🎁 Gift order</div>
+          {order.giftMessage ? (
+            <p className="text-brand-dark whitespace-pre-wrap">“{order.giftMessage}”</p>
+          ) : (
+            <p className="text-sm text-brand-brown/60">No message — include a blank gift card.</p>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left — items + totals */}
         <div className="lg:col-span-2 space-y-6">

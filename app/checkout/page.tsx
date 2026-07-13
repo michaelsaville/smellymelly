@@ -45,6 +45,8 @@ export default function CheckoutPage() {
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [fulfillment, setFulfillment] = useState<Fulfillment>('SHIP')
+  const [isGift, setIsGift] = useState(false)
+  const [giftMessage, setGiftMessage] = useState('')
   const [shipName, setShipName] = useState('')
   const [shipAddress, setShipAddress] = useState('')
   const [shipCity, setShipCity] = useState('')
@@ -195,6 +197,8 @@ export default function CheckoutPage() {
       }
 
       body.paymentMethod = paymentMethod
+      body.isGift = isGift
+      if (isGift && giftMessage.trim()) body.giftMessage = giftMessage.trim()
 
       // Card checkout: confirm the card in-page with Stripe first (this is what
       // actually charges), then hand the succeeded PaymentIntent id to the
@@ -261,6 +265,35 @@ export default function CheckoutPage() {
                   <input id="phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="input" placeholder="(555) 555-5555" />
                 </div>
               </div>
+            </section>
+
+            {/* Gift options */}
+            <section className="card">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isGift}
+                  onChange={(e) => setIsGift(e.target.checked)}
+                  className="h-4 w-4"
+                />
+                <span className="font-display text-lg font-bold text-brand-dark">🎁 This is a gift</span>
+              </label>
+              {isGift && (
+                <div className="mt-4">
+                  <label htmlFor="giftMessage" className="block text-sm font-medium text-brand-brown mb-1">
+                    Gift message (we&apos;ll include a handwritten note)
+                  </label>
+                  <textarea
+                    id="giftMessage"
+                    value={giftMessage}
+                    onChange={(e) => setGiftMessage(e.target.value.slice(0, 300))}
+                    rows={3}
+                    className="input resize-y"
+                    placeholder="Happy Birthday! Enjoy a little self-care. 💛"
+                  />
+                  <p className="mt-1 text-xs text-brand-brown/50">{giftMessage.length}/300</p>
+                </div>
+              )}
             </section>
 
             {/* Fulfillment toggle */}

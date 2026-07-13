@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { prisma } from '@/app/lib/prisma'
 import StoreLayout from '@/app/components/StoreLayout'
+import ProductCard from '@/app/components/ProductCard'
 
 export const metadata: Metadata = {
   title: 'Shop',
@@ -11,9 +12,6 @@ export const metadata: Metadata = {
 
 export const dynamic = 'force-dynamic'
 
-function formatPrice(cents: number) {
-  return `$${(cents / 100).toFixed(2)}`
-}
 
 export default async function ShopPage({
   searchParams,
@@ -49,6 +47,16 @@ export default async function ShopPage({
       orderBy: { name: 'asc' },
     }),
   ])
+
+  const ratings = await prisma.sM_Review.groupBy({
+    by: ['productId'],
+    where: { isApproved: true, productId: { in: products.map((p) => p.id) } },
+    _avg: { rating: true },
+    _count: { _all: true },
+  })
+  const ratingMap = new Map(
+    ratings.map((r) => [r.productId, { avg: r._avg.rating ?? 0, count: r._count._all }]),
+  )
 
   return (
     <StoreLayout>
@@ -102,65 +110,14 @@ export default async function ShopPage({
           {/* Product grid */}
           {products.length > 0 ? (
             <div className="mt-12 grid grid-cols-2 gap-4 sm:gap-6 md:grid-cols-3 lg:grid-cols-4">
-              {products.map((product) => {
-                const image = product.images[0]
-                const prices = product.variants.map((v) => v.priceCents)
-                const minPrice = prices.length > 0 ? Math.min(...prices) : null
-                const maxPrice = prices.length > 0 ? Math.max(...prices) : null
-
-                return (
-                  <Link
-                    key={product.id}
-                    href={`/shop/${product.slug}`}
-                    className="card p-0 overflow-hidden hover:border-brand-terra/40 hover:shadow-md transition-all group"
-                  >
-                    {/* Image */}
-                    <div className="aspect-square relative bg-gradient-to-br from-brand-peach/30 to-brand-warm overflow-hidden">
-                      {image ? (
-                        <img
-                          src={image.url}
-                          alt={image.altText || product.name}
-                          className="absolute inset-0 h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        />
-                      ) : (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <span className="text-4xl opacity-40">
-                            {product.category?.name === 'Home Fragrance' ? '🏠' :
-                             product.category?.name === 'Bath & Body' ? '🛁' :
-                             product.category?.name === 'Lip Care' ? '💋' :
-                             product.category?.name === 'Beard Oil' ? '🧴' :
-                             product.category?.name === 'Beard Balm' ? '🧔' : '✨'}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Info */}
-                    <div className="p-4">
-                      <h3 className="font-display text-base font-semibold text-brand-dark group-hover:text-brand-terra transition-colors line-clamp-1">
-                        {product.name}
-                      </h3>
-                      {product.scent && (
-                        <p className="mt-0.5 text-xs text-brand-brown/60">{product.scent}</p>
-                      )}
-                      <div className="mt-2 flex items-center justify-between">
-                        <span className="text-sm font-medium text-brand-terra">
-                          {minPrice !== null ? (
-                            minPrice === maxPrice
-                              ? formatPrice(minPrice)
-                              : `From ${formatPrice(minPrice)}`
-                          ) : (
-                            'Price TBD'
-                          )}
-                        </span>
-                        <span className="text-xs font-medium text-brand-brown/40 group-hover:text-brand-terra transition-colors">
-                          View
-                        </span>
-                      </div>
-                    </div>
-                  </Link>
-                )
-              })}
+              {products.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  rating={ratingMap.get(product.id)?.avg}
+                  reviewCount={ratingMap.get(product.id)?.count}
+                />
+              ))}
             </div>
           ) : (
             <div className="mt-20 text-center">

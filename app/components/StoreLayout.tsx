@@ -39,6 +39,7 @@ function CartBadge() {
 const navLinks = [
   { href: '/shop', label: 'Shop' },
   { href: '/scent-finder', label: 'Find Your Scent' },
+  { href: '/gifts', label: 'Gifts' },
   { href: '/menu', label: 'Scent Menu' },
   { href: '/about', label: 'About' },
   { href: '/contact', label: 'Contact' },
@@ -226,6 +227,12 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
               className="text-sm text-brand-brown/70 hover:text-brand-terra transition-colors"
             >
               Track Order
+            </Link>
+            <Link
+              href="/custom-orders"
+              className="text-sm text-brand-brown/70 hover:text-brand-terra transition-colors"
+            >
+              Custom & Wholesale
             </Link>
           </div>
           <div className="flex flex-col gap-2 sm:items-end">
