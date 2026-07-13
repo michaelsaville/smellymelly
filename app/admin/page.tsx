@@ -153,8 +153,11 @@ export default async function AdminDashboard() {
       </div>
 
       {/* Quick Actions */}
-      <div className="mt-8 flex gap-3">
-        <Link href="/admin/products/new" className="btn-primary">
+      <div className="mt-8 flex flex-wrap gap-3">
+        <Link href="/admin/pos" className="btn-primary">
+          🛒 New Sale
+        </Link>
+        <Link href="/admin/products/new" className="btn-secondary">
           + Add Product
         </Link>
         <Link href="/admin/inventory" className="btn-secondary">
