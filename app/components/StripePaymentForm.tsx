@@ -58,6 +58,14 @@ const StripePaymentForm = forwardRef<StripeFormHandle, { disabled?: boolean }>(
           const { error, paymentIntent } = await stripe.confirmPayment({
             elements,
             clientSecret: json.clientSecret,
+            // return_url is required by Stripe.js whenever any redirect-capable
+            // method could be used. We disable redirect methods on the PI
+            // (allow_redirects:'never') so card/Link confirm in-page and never
+            // actually use this — but it must be a valid URL or confirm throws
+            // "return_url is required when using automatic payment methods".
+            confirmParams: {
+              return_url: `${window.location.origin}/checkout`,
+            },
             redirect: 'if_required',
           })
           if (error) {
