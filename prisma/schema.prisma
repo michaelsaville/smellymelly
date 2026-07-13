@@ -338,7 +338,7 @@ model SM_Order {
   discountCents Int     @default(0)
 
   // Payment tracking
-  paymentMethod   SM_PaymentMethod @default(SQUARE_CARD)
+  paymentMethod   SM_PaymentMethod @default(MANUAL)
   // For MANUAL tender — filled in by admin when marking the order paid.
   // Free-form so "Venmo 4/18", "Cash App @melissaj", "Check #301" all work.
   manualPaymentNote String?

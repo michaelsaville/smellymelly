@@ -1,25 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
-import { getSquareClient, getSquareLocationId, isSquareConfigured } from '@/app/lib/square'
 import { getStripe, isStripeConfigured } from '@/app/lib/stripe'
 import { computeCheckout } from '@/app/lib/checkout-totals'
 import { sendOrderConfirmation } from '@/app/lib/email'
 import { upsertCustomerFromOrder } from '@/app/lib/customers'
-import { randomUUID } from 'crypto'
 
 interface CheckoutItem {
   variantId: string
   quantity: number
 }
 
-type PaymentMethod = 'STRIPE_CARD' | 'SQUARE_CARD' | 'SQUARE_CASH_APP' | 'MANUAL'
+// Only STRIPE_CARD and MANUAL are offered at checkout. The SQUARE_* enum values
+// still exist for historical orders but are never created by new checkouts.
+type PaymentMethod = 'STRIPE_CARD' | 'MANUAL'
 
 interface CheckoutBody {
   customer: { name: string; email: string; phone?: string }
   fulfillment: 'SHIP' | 'PICKUP'
   shipping?: { name: string; address: string; city: string; state: string; zip: string }
   items: CheckoutItem[]
-  paymentToken?: string // Square Web Payments SDK nonce (card or cash-app)
   stripePaymentIntentId?: string // Stripe PaymentIntent id, already confirmed client-side
   paymentMethod?: PaymentMethod
   shippingCentsOverride?: number // from rate calculation
@@ -31,23 +30,12 @@ interface CheckoutBody {
 // The Stripe card is confirmed (charged) client-side BEFORE this route runs. If
 // anything server-side then fails (stock ran out, DB error), we must return the
 // money — otherwise the buyer is charged with no order. Best-effort; logs on failure.
-async function autoRefund(opts: { stripePaymentIntentId?: string | null; squarePaymentId?: string | null }) {
+async function autoRefund(opts: { stripePaymentIntentId?: string | null }) {
   if (opts.stripePaymentIntentId && isStripeConfigured()) {
     try {
       await getStripe().refunds.create({ payment_intent: opts.stripePaymentIntentId })
     } catch (e) {
       console.error(`[refund] Stripe auto-refund failed for ${opts.stripePaymentIntentId}:`, e)
-    }
-  }
-  if (opts.squarePaymentId && isSquareConfigured()) {
-    try {
-      await getSquareClient().refunds.refundPayment({
-        idempotencyKey: randomUUID(),
-        paymentId: opts.squarePaymentId,
-        amountMoney: undefined as never, // full refund
-      } as never)
-    } catch (e) {
-      console.error(`[refund] Square auto-refund failed for ${opts.squarePaymentId}:`, e)
     }
   }
 }
@@ -76,27 +64,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Resolve payment method. Defaults to SQUARE_CARD for backward compat
-    // with any old clients that only send paymentToken.
-    const paymentMethod: PaymentMethod =
-      body.paymentMethod ??
-      (body.paymentToken ? 'SQUARE_CARD' : 'MANUAL')
-
-    const squareReady = isSquareConfigured()
-    const isSquareTender = paymentMethod === 'SQUARE_CARD' || paymentMethod === 'SQUARE_CASH_APP'
-
-    if (isSquareTender && !squareReady) {
-      return NextResponse.json(
-        { error: 'Card payments are temporarily unavailable. Please pick another option.' },
-        { status: 400 },
-      )
-    }
-    if (isSquareTender && !body.paymentToken) {
-      return NextResponse.json(
-        { error: 'Payment token is required for card / Cash App Pay.' },
-        { status: 400 },
-      )
-    }
+    // Resolve payment method. Defaults to MANUAL (order stays pending until
+    // paid) when a client doesn't specify one.
+    const paymentMethod: PaymentMethod = body.paymentMethod ?? 'MANUAL'
 
     const isStripeTender = paymentMethod === 'STRIPE_CARD'
     if (isStripeTender && !isStripeConfigured()) {
@@ -141,34 +111,6 @@ export async function POST(req: NextRequest) {
       totalCents,
     } = computed.data
 
-    // --- Process Square payment if applicable ---
-    let squarePaymentId: string | null = null
-    if (isSquareTender && body.paymentToken && squareReady) {
-      try {
-        const square = getSquareClient()
-        const paymentResult = await square.payments.create({
-          sourceId: body.paymentToken,
-          idempotencyKey: randomUUID(),
-          amountMoney: {
-            amount: BigInt(totalCents),
-            currency: 'USD',
-          },
-          locationId: getSquareLocationId(),
-          buyerEmailAddress: body.customer.email.trim(),
-          note: `Smelly Melly order for ${body.customer.name.trim()}`,
-        })
-
-        if (!paymentResult.payment?.id) {
-          return NextResponse.json({ error: 'Payment processing failed. Please try again.' }, { status: 400 })
-        }
-
-        squarePaymentId = paymentResult.payment.id
-      } catch (err) {
-        console.error('Square payment error:', err)
-        return NextResponse.json({ error: 'Payment failed. Please check your card details and try again.' }, { status: 400 })
-      }
-    }
-
     // --- Verify Stripe payment if applicable ---
     // The card was already confirmed client-side. Here we authoritatively ask
     // Stripe whether it actually succeeded AND that the captured amount equals
@@ -200,7 +142,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const paidNow = !!squarePaymentId || !!stripePaymentIntentId
+    const paidNow = !!stripePaymentIntentId
 
     // --- Create order + items + deduct stock in a transaction ---
     // Conditional decrement (updateMany WHERE stockQuantity >= qty) closes the
@@ -241,7 +183,6 @@ export async function POST(req: NextRequest) {
           taxCents,
           totalCents,
           paymentMethod,
-          squarePaymentId,
           stripePaymentIntentId,
           paidAt: paidNow ? new Date() : null,
           items: {
@@ -262,7 +203,7 @@ export async function POST(req: NextRequest) {
     } catch (txErr) {
       // Oversold in the race window (or a DB error) after the card was charged —
       // reverse the payment so we never keep money without an order.
-      await autoRefund({ stripePaymentIntentId, squarePaymentId })
+      await autoRefund({ stripePaymentIntentId })
       const soldOut = txErr instanceof Error && txErr.message === 'OUT_OF_STOCK'
       console.error('Checkout transaction failed:', txErr)
       return NextResponse.json(
