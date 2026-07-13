@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { prisma } from '@/app/lib/prisma'
 import './globals.css'
+import ServiceWorkerRegister from '@/app/components/ServiceWorkerRegister'
 
 const SITE_URL = process.env.PUBLIC_URL || 'https://smellymelly.net'
 const SITE_NAME = 'Smelly Melly'
@@ -32,6 +33,7 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     description: DEFAULT_DESCRIPTION,
     applicationName: SITE_NAME,
+    appleWebApp: { capable: true, statusBarStyle: 'default', title: SITE_NAME },
     authors: [{ name: 'Smelly Melly' }],
     keywords: [
       'handmade body butter',
@@ -90,7 +92,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <ServiceWorkerRegister />
+      </body>
     </html>
   )
 }
