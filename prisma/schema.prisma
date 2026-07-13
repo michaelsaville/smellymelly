@@ -604,6 +604,23 @@ model SM_RecipeItem {
 
 // ─── SETTINGS ─────────────────────────────────────────────────────────────
 
+/// Saved filter presets for the admin Orders screen. Global (single shared
+/// admin login — no per-user views). SYSTEM views are seeded + immutable.
+model SM_OrderView {
+  id           String   @id @default(cuid())
+  name         String
+  filters      Json // OrderFilters shape — see app/lib/order-views.ts
+  sort         Json? // reserved; null = default createdAt desc
+  isSystem     Boolean  @default(false)
+  icon         String? // optional emoji
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("sm_order_views")
+  @@schema("smellymelly")
+}
+
 model SM_Settings {
   id            String  @id @default("singleton")
   businessName  String  @default("Smelly Melly")

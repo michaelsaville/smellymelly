@@ -102,13 +102,6 @@ export function lookupScent(
 
 // Parses the scent prefix out of a variant name. Mirrors the client-side
 // parseVariant() in app/shop/[slug]/AddToCart.tsx so resolver inputs match
-// what the picker shows. "Lavender - 4oz" -> "Lavender". "Peppermint" -> "Peppermint".
-const SIZE_RE = /^(\d+(?:\.\d+)?)\s*(oz|ml|g|lb)$/i
-export function parseVariantScent(variantName: string): string {
-  const idx = variantName.lastIndexOf(' - ')
-  if (idx >= 0) {
-    const tail = variantName.slice(idx + 3).trim()
-    if (SIZE_RE.test(tail)) return variantName.slice(0, idx).trim()
-  }
-  return variantName.trim()
-}
+// what the picker shows. Moved to a client-safe module; re-exported here so
+// existing server callers keep their import path.
+export { parseVariantScent } from './variant-name'
