@@ -4,6 +4,8 @@ import { useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 const SIZE_RE = /^(\d+(?:\.\d+)?)\s*(oz|ml|g|lb)$/i
+// Sentinel for the sizeless "Standard" group in the copy-scents dropdown
+const STANDARD_KEY = '__standard__'
 
 function parseName(name: string): { scent: string; size: string } {
   const idx = name.lastIndexOf(' - ')
@@ -125,6 +127,11 @@ export default function EditProductForm({
   const [showAddScent, setShowAddScent] = useState(false)
   const [newScentName, setNewScentName] = useState('')
 
+  const [showAddSize, setShowAddSize] = useState(false)
+  const [newSizeValue, setNewSizeValue] = useState('')
+  const [copyScentsFrom, setCopyScentsFrom] = useState('')
+  const [copyScope, setCopyScope] = useState<'all' | 'active'>('active')
+
   // Images
   const [images, setImages] = useState<Image[]>(product.images)
   const [uploading, setUploading] = useState(false)
@@ -189,6 +196,58 @@ export default function EditProductForm({
     setVariants([...variants, ...newRows])
     setNewScentName('')
     setShowAddScent(false)
+  }
+
+  function handleAddSize() {
+    const raw = newSizeValue.trim().toLowerCase()
+    if (!raw) return
+    if (!SIZE_RE.test(raw)) {
+      setError(
+        'Size must be a number followed by oz, ml, g, or lb — e.g. "2oz", "8oz", "250ml".',
+      )
+      return
+    }
+    // Normalize "8 oz" -> "8oz" so it round-trips through the name parser
+    const size = raw.replace(/\s+/g, '')
+    if (sizesPresent.includes(size)) {
+      setError(`Size "${size}" already exists.`)
+      return
+    }
+
+    let newRows: VariantInput[] = []
+    if (copyScentsFrom) {
+      const sourceSize = copyScentsFrom === STANDARD_KEY ? '' : copyScentsFrom
+      // De-dupe scents in the source size (keep first occurrence)
+      const seen = new Set<string>()
+      for (const src of variants) {
+        if (src.size !== sourceSize) continue
+        if (copyScope === 'active' && !src.isActive) continue
+        const key = src.scent.trim().toLowerCase()
+        if (!key || seen.has(key)) continue
+        seen.add(key)
+        newRows.push({
+          scent: src.scent,
+          size,
+          // Start from the source size's price/cost — editable per row below
+          priceCents: src.priceCents,
+          costCents: src.costCents,
+          weightOz: '',
+          stockQuantity: '0',
+          sku: '',
+          // Preserve active state when copying "all"; active-only rows are all active
+          isActive: copyScope === 'active' ? true : src.isActive,
+        })
+      }
+    }
+    if (newRows.length === 0) {
+      newRows = [emptyVariant(size)]
+    }
+
+    setVariants([...variants, ...newRows])
+    setNewSizeValue('')
+    setCopyScentsFrom('')
+    setShowAddSize(false)
+    setError(null)
   }
 
   // --- Image upload ---
@@ -496,13 +555,28 @@ export default function EditProductForm({
               ({variants.length})
             </span>
           </h2>
-          <button
-            type="button"
-            onClick={() => setShowAddScent((s) => !s)}
-            className="btn-ghost text-sm"
-          >
-            + Add Scent
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setShowAddSize(false)
+                setShowAddScent((s) => !s)
+              }}
+              className="btn-ghost text-sm"
+            >
+              + Add Scent
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowAddScent(false)
+                setShowAddSize((s) => !s)
+              }}
+              className="btn-ghost text-sm"
+            >
+              + Add Size
+            </button>
+          </div>
         </div>
 
         {showAddScent && (
@@ -552,6 +626,97 @@ export default function EditProductForm({
                 pre-filled with that size&apos;s current price. Edit each row below.
               </p>
             )}
+          </div>
+        )}
+
+        {showAddSize && (
+          <div className="rounded-lg border border-brand-terra/40 bg-brand-peach/10 p-3 space-y-2">
+            <label className="block text-xs font-medium text-brand-brown/80">
+              New size
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <input
+                type="text"
+                value={newSizeValue}
+                onChange={(e) => setNewSizeValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleAddSize()
+                  }
+                }}
+                placeholder="e.g. 8oz"
+                className="input text-sm w-28"
+                autoFocus
+              />
+              {variants.length > 0 && (
+                <select
+                  value={copyScentsFrom}
+                  onChange={(e) => setCopyScentsFrom(e.target.value)}
+                  className="input text-sm flex-1 min-w-[180px]"
+                >
+                  <option value="">Start with one empty scent</option>
+                  {sizesPresent.map((s) => (
+                    <option key={s || STANDARD_KEY} value={s || STANDARD_KEY}>
+                      Copy scents from {s || 'Standard'}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                type="button"
+                onClick={handleAddSize}
+                disabled={!newSizeValue.trim()}
+                className="btn-primary text-sm disabled:opacity-50"
+              >
+                Add
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddSize(false)
+                  setNewSizeValue('')
+                  setCopyScentsFrom('')
+                  setCopyScope('active')
+                }}
+                className="btn-ghost text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+            {copyScentsFrom && (
+              <div className="flex items-center gap-4 text-xs text-brand-brown/80">
+                <span className="font-medium">Which scents:</span>
+                <label className="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    name="copyScope"
+                    checked={copyScope === 'active'}
+                    onChange={() => setCopyScope('active')}
+                    className="text-brand-terra focus:ring-brand-terra"
+                  />
+                  Active only
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    name="copyScope"
+                    checked={copyScope === 'all'}
+                    onChange={() => setCopyScope('all')}
+                    className="text-brand-terra focus:ring-brand-terra"
+                  />
+                  All scents
+                </label>
+              </div>
+            )}
+            <p className="text-xs text-brand-brown/50">
+              Use a number plus a unit — oz, ml, g, or lb (e.g. 2oz, 8oz, 250ml).
+              {copyScentsFrom
+                ? copyScope === 'active'
+                  ? ` The active scents in ${copyScentsFrom === STANDARD_KEY ? 'Standard' : copyScentsFrom} are copied into the new size, starting from their current price. Edit each row below.`
+                  : ` Every scent in ${copyScentsFrom === STANDARD_KEY ? 'Standard' : copyScentsFrom} (active and inactive) is copied into the new size, keeping each one's active state. Edit each row below.`
+                : ' A single blank scent row is created for the new size.'}
+            </p>
           </div>
         )}
 
