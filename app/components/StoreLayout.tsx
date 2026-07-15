@@ -134,7 +134,7 @@ function BrandMark({ logoUrl }: { logoUrl: string | null }) {
       <img
         src={logoUrl}
         alt="Smelly Melly"
-        className="h-10 w-auto sm:h-12 object-contain"
+        className="h-12 w-auto sm:h-14 object-contain"
       />
     )
   }
@@ -244,17 +244,18 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
         <div className="mx-auto max-w-6xl grid gap-6 sm:grid-cols-3 sm:items-start">
           <div>
             <div className="flex items-center gap-3">
-              {logoUrl && (
+              {logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={logoUrl}
                   alt="Smelly Melly"
-                  className="h-10 w-auto object-contain"
+                  className="h-12 w-auto object-contain"
                 />
+              ) : (
+                <div className="font-display text-xl font-bold text-brand-brown">
+                  Smelly Melly
+                </div>
               )}
-              <div className="font-display text-xl font-bold text-brand-brown">
-                Smelly Melly
-              </div>
             </div>
             <div className="mt-1 text-sm text-brand-brown/50">
               Handmade in Cumberland, MD
