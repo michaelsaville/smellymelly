@@ -365,6 +365,24 @@ export async function createPosSale(
     if (err instanceof GiftCardError) {
       return { ok: false, error: `${err.message} Nothing was charged.` }
     }
+    // A double-tap replays the same clientSaleId and trips the unique
+    // idempotencyKey on the redemption row. The card was NOT spent twice —
+    // but the first sale did go through, so never tell Mel to "try again"
+    // here or she'll ring the order a second time.
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      (err as { code?: string }).code === 'P2002' &&
+      String((err as { meta?: { target?: unknown } }).meta?.target ?? '').includes(
+        'idempotencyKey',
+      )
+    ) {
+      return {
+        ok: false,
+        error:
+          'This sale was already rung up — the certificate was only charged once. Check Orders before ringing it again.',
+      }
+    }
     console.error('POS sale failed:', err)
     return { ok: false, error: 'Could not complete the sale. Nothing was charged — try again.' }
   }
