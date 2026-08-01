@@ -1,5 +1,6 @@
 import { requireAdmin } from '@/app/lib/admin-auth'
 import { prisma } from '@/app/lib/prisma'
+import { getStripePublishableKey, isStripeConfigured } from '@/app/lib/stripe'
 import PosClient from './PosClient'
 
 export const dynamic = 'force-dynamic'
@@ -51,6 +52,7 @@ export default async function PosPage() {
         taxRate={settings?.taxRate ?? 0.06}
         hideOutOfStock={settings?.posHideOutOfStock ?? false}
         readerLabel={settings?.terminalReaderLabel ?? null}
+        stripePublishableKey={isStripeConfigured() ? getStripePublishableKey() : null}
         variants={variants.map((v) => {
           const { scent, size } = parseVariant(v.name)
           return {

@@ -15,9 +15,13 @@ type Reader = { id: string; label: string; status: string; deviceType: string }
 export default function CardReaderPanel({
   readerId,
   readerLabel,
+  keyedAvailable,
 }: {
   readerId: string | null
   readerLabel: string | null
+  /** Whether Stripe is configured, so New Sale can still take a typed card
+   *  while no reader is set up. Changes what "no reader" actually means. */
+  keyedAvailable: boolean
 }) {
   const router = useRouter()
   const [readers, setReaders] = useState<Reader[] | null>(null)
@@ -75,7 +79,9 @@ export default function CardReaderPanel({
           </>
         ) : (
           <span className="text-brand-brown/60">
-            No reader set up — Card at the till records a hand-typed reference instead.
+            {keyedAvailable
+              ? 'No reader set up — Card at the till is typed in instead. That works, but it costs more per sale and the chargeback risk is ours, so pick a reader once one is registered.'
+              : 'No reader set up — Card at the till records a hand-typed reference instead.'}
           </span>
         )}
       </div>

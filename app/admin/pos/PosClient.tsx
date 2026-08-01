@@ -9,6 +9,7 @@ import {
   type PosGiftCardSale,
 } from '@/app/lib/actions/pos'
 import { lookupGiftCard } from '@/app/lib/actions/gift-cards'
+import KeyedCardPanel from './KeyedCardPanel'
 import {
   cancelTerminalPayment,
   checkTerminalPayment,
@@ -204,6 +205,7 @@ function TenderSheet({
   busy,
   error,
   readerLabel,
+  stripePublishableKey,
   onCancel,
   onComplete,
 }: {
@@ -217,8 +219,11 @@ function TenderSheet({
   busy: boolean
   error: string | null
   /** Label of the configured Stripe Terminal reader, or null when none is set
-   *  up — in which case Card falls back to a hand-typed reference. */
+   *  up — in which case Card falls back to keyed entry, or to a hand-typed
+   *  reference when Stripe isn't configured either. */
   readerLabel: string | null
+  /** Publishable key for the in-sheet card field; null disables keyed entry. */
+  stripePublishableKey: string | null
   onCancel: () => void
   onComplete: (r: {
     tenders: PosTender[]
@@ -284,7 +289,19 @@ function TenderSheet({
       : legBMethod === 'Card'
         ? legB
         : 0
-  const useReader = !!readerLabel && cardAmountCents > 0
+
+  // How the card leg gets taken. The reader wins when one is set up — it is
+  // cheaper and card-present, so chargeback liability stays with the network.
+  // Keyed entry is the stand-in before the reader exists, and the escape hatch
+  // for a card the reader won't read. Stripe rejects card charges under $0.50,
+  // so below that the only honest option is to record it by hand.
+  const canReader = !!readerLabel && cardAmountCents > 0
+  const canKeyed = !!stripePublishableKey && cardAmountCents >= 50
+  const [preferKeyed, setPreferKeyed] = useState(false)
+  const cardMode: 'reader' | 'keyed' | 'manual' =
+    canReader && !(preferKeyed && canKeyed) ? 'reader' : canKeyed ? 'keyed' : 'manual'
+  const useReader = canReader && cardMode === 'reader'
+  const useKeyed = cardMode === 'keyed' && cardAmountCents > 0
 
   const [tState, setTState] = useState<'idle' | 'waiting' | 'failed'>('idle')
   const [tMsg, setTMsg] = useState<string | null>(null)
@@ -507,6 +524,16 @@ function TenderSheet({
                     recorded once the card goes through.
                   </p>
                 </div>
+              ) : useKeyed ? (
+                <div className="rounded-lg border border-brand-warm/60 bg-white px-3 py-3">
+                  <div className="text-xs font-medium uppercase tracking-wide text-brand-brown/50">
+                    Type the card in
+                  </div>
+                  <p className="mt-1 text-sm text-brand-brown/60">
+                    Enter the card below to charge {money(cardAmountCents)}. The sale is recorded
+                    once it goes through.
+                  </p>
+                </div>
               ) : (
                 <div>
                   <label className="mb-1 block text-xs font-medium text-brand-brown/80">
@@ -559,7 +586,17 @@ function TenderSheet({
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
         {tMsg && <p className="mt-3 text-sm text-red-600">{tMsg}</p>}
 
-        {useReader && tState === 'waiting' ? (
+        {useKeyed ? (
+          <KeyedCardPanel
+            amountCents={cardAmountCents}
+            publishableKey={stripePublishableKey ?? ''}
+            busy={busy}
+            disabled={split && !splitOk}
+            onCharged={(pi) =>
+              onComplete({ tenders: tendersForCompletion(), stripePaymentIntentId: pi })
+            }
+          />
+        ) : useReader && tState === 'waiting' ? (
           <>
             <div className="mt-4 flex h-14 w-full items-center justify-center rounded-lg bg-brand-cream text-base font-medium text-brand-brown">
               <span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-brand-terra" />
@@ -587,6 +624,18 @@ function TenderSheet({
                 : useReader
                   ? `${tState === 'failed' ? 'Try again — ' : ''}Charge ${money(cardAmountCents)} on reader`
                   : 'Done'}
+          </button>
+        )}
+
+        {/* Only worth offering once both paths exist — before the reader
+            arrives keyed IS the card path, and there is nothing to swap to. */}
+        {canReader && canKeyed && tState !== 'waiting' && !busy && (
+          <button
+            type="button"
+            onClick={() => setPreferKeyed((v) => !v)}
+            className="mt-2 h-11 w-full text-sm text-brand-brown/60 hover:text-brand-brown"
+          >
+            {useKeyed ? 'Use the reader instead' : "Type the card in instead (won't read)"}
           </button>
         )}
       </div>
@@ -933,11 +982,13 @@ export default function PosClient({
   taxRate,
   hideOutOfStock: hideInitial,
   readerLabel,
+  stripePublishableKey,
 }: {
   variants: PosVariant[]
   taxRate: number
   hideOutOfStock: boolean
   readerLabel: string | null
+  stripePublishableKey: string | null
 }) {
   const router = useRouter()
   const [search, setSearch] = useState('')
@@ -1494,6 +1545,7 @@ export default function PosClient({
           busy={busy}
           error={error}
           readerLabel={readerLabel}
+          stripePublishableKey={stripePublishableKey}
           onCancel={() => { setTenderOpen(false); setError(null) }}
           onComplete={submit}
         />

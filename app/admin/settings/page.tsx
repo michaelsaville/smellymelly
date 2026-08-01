@@ -1,5 +1,6 @@
 import { requireAdmin } from '@/app/lib/admin-auth'
 import { prisma } from '@/app/lib/prisma'
+import { isStripeConfigured } from '@/app/lib/stripe'
 import SettingsForm from './SettingsForm'
 import CardReaderPanel from './CardReaderPanel'
 
@@ -68,6 +69,7 @@ export default async function SettingsPage() {
       <CardReaderPanel
         readerId={settings?.terminalReaderId ?? null}
         readerLabel={settings?.terminalReaderLabel ?? null}
+        keyedAvailable={isStripeConfigured()}
       />
     </div>
   )
