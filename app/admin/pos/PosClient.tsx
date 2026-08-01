@@ -9,6 +9,11 @@ import {
   type PosGiftCardSale,
 } from '@/app/lib/actions/pos'
 import { lookupGiftCard } from '@/app/lib/actions/gift-cards'
+import {
+  cancelTerminalPayment,
+  checkTerminalPayment,
+  startTerminalPayment,
+} from '@/app/lib/actions/terminal'
 
 /** A certificate the customer is paying WITH, once we've looked it up. */
 interface AppliedGiftCard {
@@ -198,6 +203,7 @@ function TenderSheet({
   onRemoveGiftCard,
   busy,
   error,
+  readerLabel,
   onCancel,
   onComplete,
 }: {
@@ -210,8 +216,15 @@ function TenderSheet({
   onRemoveGiftCard: () => void
   busy: boolean
   error: string | null
+  /** Label of the configured Stripe Terminal reader, or null when none is set
+   *  up — in which case Card falls back to a hand-typed reference. */
+  readerLabel: string | null
   onCancel: () => void
-  onComplete: (r: { tenders: PosTender[]; cashTenderedCents?: number }) => void
+  onComplete: (r: {
+    tenders: PosTender[]
+    cashTenderedCents?: number
+    stripePaymentIntentId?: string
+  }) => void
 }) {
   const [split, setSplit] = useState(false)
   const [method, setMethod] = useState<string>('Cash')
@@ -258,6 +271,94 @@ function TenderSheet({
   const legA = Math.min(Math.max(entryCents, 0), dueCents)
   const legB = dueCents - legA
   const splitOk = legA > 0 && legB > 0 && legAMethod !== legBMethod
+
+  // ---- Stripe Terminal (card-present) ----------------------------------
+  // How much of this sale has to go across the reader. Covers the plain
+  // single-Card tender and the common market case of splitting cash + card.
+  const cardAmountCents = !split
+    ? method === 'Card'
+      ? dueCents
+      : 0
+    : legAMethod === 'Card'
+      ? legA
+      : legBMethod === 'Card'
+        ? legB
+        : 0
+  const useReader = !!readerLabel && cardAmountCents > 0
+
+  const [tState, setTState] = useState<'idle' | 'waiting' | 'failed'>('idle')
+  const [tMsg, setTMsg] = useState<string | null>(null)
+  // Set while a charge is in flight so an unmount stops the poll loop.
+  const pollAbort = useRef(false)
+  // The in-flight PaymentIntent, so Cancel can void it and not just stop the
+  // reader — otherwise an untapped intent is left open on the account.
+  const livePi = useRef<string | null>(null)
+  useEffect(() => () => { pollAbort.current = true }, [])
+
+  function tendersForCompletion(): PosTender[] {
+    if (split) {
+      return [
+        { method: legAMethod, amountCents: legA },
+        { method: legBMethod, amountCents: legB },
+      ]
+    }
+    return [{ method, amountCents: dueCents, note: note.trim() || undefined }]
+  }
+
+  async function chargeOnReader() {
+    setTState('waiting')
+    setTMsg(null)
+    pollAbort.current = false
+
+    const started = await startTerminalPayment({ amountCents: cardAmountCents })
+    if (!started.ok) {
+      setTState('failed')
+      setTMsg(started.error)
+      return
+    }
+    const pi = started.paymentIntentId
+    livePi.current = pi
+
+    // Poll until the customer taps. No fixed attempt cap — Mel cancels when
+    // she's done waiting, and the reader has its own timeout.
+    for (;;) {
+      if (pollAbort.current) return
+      await new Promise((r) => setTimeout(r, 1500))
+      if (pollAbort.current) return
+
+      const res = await checkTerminalPayment(pi)
+      if (!res.ok) {
+        setTState('failed')
+        setTMsg(res.error)
+        return
+      }
+      if (res.state === 'succeeded') {
+        setTState('idle')
+        livePi.current = null
+        // The money is taken. Hand the id down so the order records it and
+        // the @unique column blocks a duplicate order for the same charge.
+        onComplete({
+          tenders: tendersForCompletion(),
+          stripePaymentIntentId: pi,
+        })
+        return
+      }
+      if (res.state === 'failed') {
+        setTState('failed')
+        setTMsg(res.message || 'The card was declined.')
+        return
+      }
+    }
+  }
+
+  async function abortReaderCharge() {
+    pollAbort.current = true
+    setTState('idle')
+    setTMsg(null)
+    const pi = livePi.current
+    livePi.current = null
+    await cancelTerminalPayment(pi ?? undefined)
+  }
 
   function methodChips(active: string, set: (m: string) => void, size: 'lg' | 'sm' = 'lg') {
     return (
@@ -395,20 +496,33 @@ function TenderSheet({
                 </div>
               </div>
             ) : (
-              <div>
-                <label className="mb-1 block text-xs font-medium text-brand-brown/80">
-                  Reference (optional)
-                </label>
-                <input
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder={method === 'Card' ? 'e.g. last 4 digits' : 'e.g. @mel-soaps'}
-                  className="input w-full text-sm"
-                />
-                <p className="mt-2 text-xs text-brand-brown/50">
-                  Confirm the {money(dueCents)} payment was received in {method}, then tap Done.
-                </p>
-              </div>
+              useReader ? (
+                <div className="rounded-lg border border-brand-warm/60 bg-white px-3 py-3">
+                  <div className="text-xs font-medium uppercase tracking-wide text-brand-brown/50">
+                    Card reader
+                  </div>
+                  <p className="mt-1 text-sm text-brand-dark">{readerLabel}</p>
+                  <p className="mt-2 text-xs text-brand-brown/60">
+                    Tapping below sends {money(cardAmountCents)} to the reader. The sale is
+                    recorded once the card goes through.
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-brand-brown/80">
+                    Reference (optional)
+                  </label>
+                  <input
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder={method === 'Card' ? 'e.g. last 4 digits' : 'e.g. @mel-soaps'}
+                    className="input w-full text-sm"
+                  />
+                  <p className="mt-2 text-xs text-brand-brown/50">
+                    Confirm the {money(dueCents)} payment was received in {method}, then tap Done.
+                  </p>
+                </div>
+              )
             )}
           </>
         ) : (
@@ -443,15 +557,38 @@ function TenderSheet({
         )}
 
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        {tMsg && <p className="mt-3 text-sm text-red-600">{tMsg}</p>}
 
-        <button
-          type="button"
-          onClick={finish}
-          disabled={busy || (fullyCovered ? false : split ? !splitOk : !cashOk)}
-          className="btn-primary mt-4 h-14 w-full text-base disabled:opacity-50"
-        >
-          {busy ? 'Recording…' : fullyCovered ? 'Complete sale' : 'Done'}
-        </button>
+        {useReader && tState === 'waiting' ? (
+          <>
+            <div className="mt-4 flex h-14 w-full items-center justify-center rounded-lg bg-brand-cream text-base font-medium text-brand-brown">
+              <span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-brand-terra" />
+              Waiting for the card…
+            </div>
+            <button
+              type="button"
+              onClick={abortReaderCharge}
+              className="mt-2 h-11 w-full text-sm text-brand-brown/60 hover:text-brand-brown"
+            >
+              Cancel the charge
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={useReader ? chargeOnReader : finish}
+            disabled={busy || (fullyCovered ? false : split ? !splitOk : !cashOk)}
+            className="btn-primary mt-4 h-14 w-full text-base disabled:opacity-50"
+          >
+            {busy
+              ? 'Recording…'
+              : fullyCovered
+                ? 'Complete sale'
+                : useReader
+                  ? `${tState === 'failed' ? 'Try again — ' : ''}Charge ${money(cardAmountCents)} on reader`
+                  : 'Done'}
+          </button>
+        )}
       </div>
     </div>
   )
@@ -795,10 +932,12 @@ export default function PosClient({
   variants,
   taxRate,
   hideOutOfStock: hideInitial,
+  readerLabel,
 }: {
   variants: PosVariant[]
   taxRate: number
   hideOutOfStock: boolean
+  readerLabel: string | null
 }) {
   const router = useRouter()
   const [search, setSearch] = useState('')
@@ -1007,12 +1146,22 @@ export default function PosClient({
     : null
   const giftCardCents = appliedGiftCard?.amountCents ?? 0
 
-  async function submit(r: { tenders: PosTender[]; cashTenderedCents?: number }) {
+  async function submit(r: {
+    tenders: PosTender[]
+    cashTenderedCents?: number
+    stripePaymentIntentId?: string
+  }) {
     if (submittingRef.current || (lines.length === 0 && giftCards.length === 0)) return
     submittingRef.current = true
     setBusy(true)
     setError(null)
     setSoldOutId(null)
+    // Once the reader has taken the money, every failure below is a
+    // money-taken-but-no-order situation. Never let one read as "nothing was
+    // charged" — that invites a second swipe.
+    const charged = !!r.stripePaymentIntentId
+    const chargedWarning =
+      '⚠ The card WAS charged. Do NOT charge again — refund it in Stripe if this sale cannot be completed. '
     try {
       const res = await createPosSale({
         items: lines.map((l) => ({ variantId: l.v.id, quantity: l.qty })),
@@ -1028,12 +1177,13 @@ export default function PosClient({
         // Stable for this checkout attempt, so a retried request can't spend
         // the certificate twice.
         clientSaleId: saleIdRef.current ?? undefined,
+        stripePaymentIntentId: r.stripePaymentIntentId,
         customerName: customer.name.trim() || undefined,
         customerEmail: customer.email.trim() || undefined,
         customerPhone: customer.phone.trim() || undefined,
       })
       if (!res.ok) {
-        setError(res.error)
+        setError(charged ? chargedWarning + res.error : res.error)
         if (res.soldOutVariantId) {
           setSoldOutId(res.soldOutVariantId)
           setTenderOpen(false)
@@ -1058,7 +1208,11 @@ export default function PosClient({
         /* noop */
       }
     } catch {
-      setError('Could not complete the sale. Nothing was charged — try again.')
+      setError(
+        charged
+          ? chargedWarning + 'The sale could not be recorded.'
+          : 'Could not complete the sale. Nothing was charged — try again.',
+      )
     } finally {
       setBusy(false)
       submittingRef.current = false
@@ -1339,6 +1493,7 @@ export default function PosClient({
           onRemoveGiftCard={() => setRedeemCard(null)}
           busy={busy}
           error={error}
+          readerLabel={readerLabel}
           onCancel={() => { setTenderOpen(false); setError(null) }}
           onComplete={submit}
         />

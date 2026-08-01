@@ -36,7 +36,7 @@ export default async function PosPage() {
     }),
     prisma.sM_Settings.findFirst({
       where: { id: 'singleton' },
-      select: { taxRate: true, posHideOutOfStock: true },
+      select: { taxRate: true, posHideOutOfStock: true, terminalReaderLabel: true },
     }),
   ])
 
@@ -50,6 +50,7 @@ export default async function PosPage() {
       <PosClient
         taxRate={settings?.taxRate ?? 0.06}
         hideOutOfStock={settings?.posHideOutOfStock ?? false}
+        readerLabel={settings?.terminalReaderLabel ?? null}
         variants={variants.map((v) => {
           const { scent, size } = parseVariant(v.name)
           return {

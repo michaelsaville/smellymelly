@@ -946,6 +946,14 @@ model SM_Settings {
   // POS preference: hide out-of-stock items from the New Sale catalog.
   posHideOutOfStock Boolean @default(false)
 
+  // Stripe Terminal smart reader used at markets. The iPad cannot accept taps
+  // itself (Tap to Pay is iPhone-only), so card-present goes through a reader
+  // driven by Stripe's server-driven API — no native app, and the reader does
+  // NOT need to share a network with the iPad. Label is cached purely so the
+  // settings screen can name the reader without a Stripe round-trip.
+  terminalReaderId    String?
+  terminalReaderLabel String?
+
   // Manual payment handles — shown on the order confirmation screen + email
   // when the buyer picks "Pay directly via Venmo / Cash App" at checkout.
   venmoHandle         String @default("")

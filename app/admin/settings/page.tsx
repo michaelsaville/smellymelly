@@ -1,6 +1,7 @@
 import { requireAdmin } from '@/app/lib/admin-auth'
 import { prisma } from '@/app/lib/prisma'
 import SettingsForm from './SettingsForm'
+import CardReaderPanel from './CardReaderPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -62,6 +63,11 @@ export default async function SettingsPage() {
           sortOrder: a.sortOrder,
           isActive: a.isActive,
         }))}
+      />
+
+      <CardReaderPanel
+        readerId={settings?.terminalReaderId ?? null}
+        readerLabel={settings?.terminalReaderLabel ?? null}
       />
     </div>
   )

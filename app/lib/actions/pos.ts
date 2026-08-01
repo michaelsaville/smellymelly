@@ -62,6 +62,10 @@ export interface PosSaleInput {
   /** Stable id for one checkout attempt, generated once by the browser. Makes
    *  a redemption idempotent so a double-tap can't spend the card twice. */
   clientSaleId?: string
+  /** Set when the card leg was actually charged on a Stripe Terminal reader.
+   *  SM_Order.stripePaymentIntentId is @unique, so this doubles as the guard
+   *  against one charge producing two PAID orders (and two stock decrements). */
+  stripePaymentIntentId?: string
   /** Optional customer capture (never blocks the sale). */
   customerName?: string
   customerEmail?: string
@@ -282,8 +286,10 @@ export async function createPosSale(
           taxCents,
           totalCents,
           giftCardCents,
-          paymentMethod: 'MANUAL',
+          // A reader charge is a real Stripe payment, not a hand-recorded one.
+          paymentMethod: input.stripePaymentIntentId ? 'STRIPE_CARD' : 'MANUAL',
           manualPaymentNote: paymentNote,
+          stripePaymentIntentId: input.stripePaymentIntentId || null,
           paidAt: new Date(),
           items: {
             create: orderItems.map((oi) => ({
@@ -369,18 +375,29 @@ export async function createPosSale(
     // idempotencyKey on the redemption row. The card was NOT spent twice —
     // but the first sale did go through, so never tell Mel to "try again"
     // here or she'll ring the order a second time.
-    if (
-      typeof err === 'object' &&
-      err !== null &&
-      (err as { code?: string }).code === 'P2002' &&
-      String((err as { meta?: { target?: unknown } }).meta?.target ?? '').includes(
-        'idempotencyKey',
-      )
-    ) {
+    const p2002Target =
+      typeof err === 'object' && err !== null && (err as { code?: string }).code === 'P2002'
+        ? String((err as { meta?: { target?: unknown } }).meta?.target ?? '')
+        : ''
+    if (p2002Target.includes('idempotencyKey')) {
       return {
         ok: false,
         error:
           'This sale was already rung up — the certificate was only charged once. Check Orders before ringing it again.',
+      }
+    }
+    // The card was charged and an order for it already exists. Never let this
+    // read as "try again": the money is gone and a retry would charge twice.
+    if (p2002Target.includes('stripePaymentIntentId') && input.stripePaymentIntentId) {
+      const existing = await prisma.sM_Order.findUnique({
+        where: { stripePaymentIntentId: input.stripePaymentIntentId },
+        select: { orderNumber: true },
+      })
+      return {
+        ok: false,
+        error: existing
+          ? `That card payment is already recorded as order #${existing.orderNumber}. Do not charge again.`
+          : 'That card payment is already recorded. Do not charge again.',
       }
     }
     console.error('POS sale failed:', err)
