@@ -142,9 +142,58 @@ export default function EditProductForm({
   const [success, setSuccess] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  // Which size group is being renamed. Tracked as an object because '' is a
+  // real size (the sizeless "Standard" group) and can't double as "none".
+  const [renamingSize, setRenamingSize] = useState<{ original: string } | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [renameError, setRenameError] = useState<string | null>(null)
 
   function addVariantToSize(size: string) {
     setVariants([...variants, emptyVariant(size)])
+  }
+
+  // Renaming a size rewrites every variant in that group. The size axis is
+  // encoded in SM_ProductVariant.name (see reconstructName), so this is a
+  // pure state change — handleSubmit rebuilds the names and the API updates
+  // each row by id, which keeps variant ids and their order history intact.
+  // `original` is the size string being renamed; '' is the sizeless
+  // "Standard" group, which is exactly the case Body Scrub needed.
+  function startRenameSize(original: string) {
+    setRenamingSize({ original })
+    setRenameValue(original)
+    setRenameError(null)
+  }
+
+  function commitRenameSize() {
+    if (!renamingSize) return
+    const original = renamingSize.original
+    // Canonicalise "4 oz" -> "4oz". SIZE_RE tolerates the space, but the
+    // existing rows don't use it, and letting both through would create two
+    // groups that look identical to Mel.
+    const next = renameValue.trim().toLowerCase().replace(/\s+/g, '')
+
+    if (next === original) {
+      setRenamingSize(null)
+      return
+    }
+    if (next && !SIZE_RE.test(next)) {
+      setRenameError('Use a size like 4oz, 8oz, 250ml, or 100g.')
+      return
+    }
+    // Merging two groups would produce two variants with the same name, which
+    // the storefront picker cannot tell apart. Make Mel move scents instead.
+    if (variants.some((v) => v.size === next)) {
+      setRenameError(
+        next
+          ? `There is already a ${next} group. Renaming would merge them and create duplicate scents.`
+          : 'There is already a Standard group. Renaming would merge them and create duplicate scents.',
+      )
+      return
+    }
+
+    setVariants(variants.map((v) => (v.size === original ? { ...v, size: next } : v)))
+    setRenamingSize(null)
+    setRenameError(null)
   }
 
   function removeVariant(idx: number) {
@@ -731,20 +780,85 @@ export default function EditProductForm({
                 key={group.size || '__default__'}
                 className="rounded-lg border border-brand-warm/60 bg-surface-muted overflow-hidden"
               >
-                <div className="flex items-center justify-between border-b border-brand-warm/60 bg-white/40 px-3 py-2">
-                  <h3 className="text-sm font-semibold text-brand-brown">
-                    {group.size || 'Standard'}
-                    <span className="ml-2 text-xs font-normal text-brand-brown/50">
-                      ({group.indices.length})
-                    </span>
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => addVariantToSize(group.size)}
-                    className="text-xs text-brand-terra hover:underline"
-                  >
-                    + Add scent to {group.size || 'Standard'}
-                  </button>
+                <div className="border-b border-brand-warm/60 bg-white/40 px-3 py-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    {renamingSize?.original === group.size ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="text"
+                          autoFocus
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            // This lives inside the product <form>; Enter would
+                            // otherwise submit the whole thing.
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              commitRenameSize()
+                            }
+                            if (e.key === 'Escape') {
+                              e.preventDefault()
+                              setRenamingSize(null)
+                              setRenameError(null)
+                            }
+                          }}
+                          placeholder="e.g. 4oz"
+                          aria-label={`New size for the ${group.size || 'Standard'} group`}
+                          className="w-28 rounded border border-brand-warm px-2 py-1 text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={commitRenameSize}
+                          className="rounded bg-brand-terra px-2 py-1 text-xs font-medium text-white"
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRenamingSize(null)
+                            setRenameError(null)
+                          }}
+                          className="text-xs text-brand-brown/60 hover:underline"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <h3 className="flex items-center text-sm font-semibold text-brand-brown">
+                        {group.size || 'Standard'}
+                        <span className="ml-2 text-xs font-normal text-brand-brown/50">
+                          ({group.indices.length})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => startRenameSize(group.size)}
+                          className="ml-2 text-xs font-normal text-brand-brown/50 hover:text-brand-terra hover:underline"
+                        >
+                          Rename
+                        </button>
+                      </h3>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => addVariantToSize(group.size)}
+                      className="text-xs text-brand-terra hover:underline"
+                    >
+                      + Add scent to {group.size || 'Standard'}
+                    </button>
+                  </div>
+                  {renamingSize?.original === group.size && (
+                    <p className="mt-1 text-xs text-brand-brown/60">
+                      {renameError ? (
+                        <span className="text-red-600">{renameError}</span>
+                      ) : (
+                        <>
+                          Renames all {group.indices.length} scent
+                          {group.indices.length === 1 ? '' : 's'} in this group. Save to apply.
+                        </>
+                      )}
+                    </p>
+                  )}
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
