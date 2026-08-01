@@ -52,6 +52,21 @@ export default async function GiftCardDetailPage({
   const ledgerBalance = card.transactions.reduce((s, t) => s + t.amountCents, 0)
   const drift = card.status === 'VOID' ? 0 : ledgerBalance - card.balanceCents
 
+  // SM_GiftCardTxn.orderId is a bare string with no relation, so resolve the
+  // human order numbers here. Without this the history reads "Order bnftoq"
+  // (a CUID tail), which Mel cannot search for in the Orders list.
+  const orderIds = [...new Set(card.transactions.map((t) => t.orderId).filter(Boolean))] as string[]
+  const orderNumbers = new Map(
+    orderIds.length
+      ? (
+          await prisma.sM_Order.findMany({
+            where: { id: { in: orderIds } },
+            select: { id: true, orderNumber: true },
+          })
+        ).map((o) => [o.id, o.orderNumber])
+      : [],
+  )
+
   return (
     <div className="mx-auto max-w-4xl">
       <Link href="/admin/gift-cards" className="text-sm text-brand-brown/60 hover:text-brand-terra">
@@ -185,7 +200,19 @@ export default async function GiftCardDetailPage({
                       {money(t.balanceAfterCents)}
                     </td>
                     <td className="px-4 py-3 text-xs text-brand-brown/60">
-                      {t.reason || (t.orderId ? `Order ${t.orderId.slice(-6)}` : '—')}
+                      {t.reason ||
+                        (t.orderId ? (
+                          <Link
+                            href={`/admin/orders/${t.orderId}`}
+                            className="hover:text-brand-terra hover:underline"
+                          >
+                            {orderNumbers.has(t.orderId)
+                              ? `Order #${orderNumbers.get(t.orderId)}`
+                              : 'View order'}
+                          </Link>
+                        ) : (
+                          '—'
+                        ))}
                     </td>
                     <td className="px-4 py-3 text-right text-xs text-brand-brown/50">
                       {t.createdAt.toLocaleDateString()}
