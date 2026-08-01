@@ -38,6 +38,19 @@ export default function CertificateShell({
           .sm-print-toolbar {
             display: none;
           }
+          /* Unlike the other print shells (scent sheet, menu), this route
+           * lives INSIDE app/admin, so it inherits AdminNav. Drop the admin
+           * chrome and the layout's centering gutter so the certificate gets
+           * the whole sheet. Scoped to body.sm-cert-print — this is a global
+           * style tag and must not touch any other admin page. */
+          body.sm-cert-print nav {
+            display: none;
+          }
+          body.sm-cert-print main {
+            max-width: none;
+            margin: 0;
+            padding: 0;
+          }
           /* Certificates are the whole point of the page — keep the ink. */
           .sm-cert {
             break-inside: avoid;
