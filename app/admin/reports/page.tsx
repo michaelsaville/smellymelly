@@ -56,8 +56,10 @@ export default async function ReportsPage({
       shippingCents: true,
       totalCents: true,
       discountCents: true,
+      giftCardCents: true,
       items: {
         select: {
+          kind: true,
           productName: true,
           quantity: true,
           totalCents: true,
@@ -79,13 +81,27 @@ export default async function ReportsPage({
   let discountCents = 0
   let cogsCents = 0
   let anyMissingCost = false
+  // Gift certificates SOLD in this period. Deliberately NOT revenue: it's cash
+  // for a promise of goods, and it becomes income when the card is redeemed
+  // (at which point the redeemed purchase shows up as ordinary product sales).
+  // Tracked separately so the cash in the till still reconciles.
+  let giftCardSoldCents = 0
+  // Gift certificates SPENT in this period. The merchandise is already counted
+  // in revenue above; this is only how much of it was paid with a certificate
+  // rather than cash, which is again a till-reconciliation number.
+  let giftCardRedeemedCents = 0
 
   for (const o of orders) {
     taxCents += o.taxCents
     shippingCents += o.shippingCents
     grossCents += o.totalCents
     discountCents += o.discountCents
+    giftCardRedeemedCents += o.giftCardCents
     for (const it of o.items) {
+      if (it.kind === 'GIFT_CARD') {
+        giftCardSoldCents += it.totalCents
+        continue // never revenue, never COGS, never a product row
+      }
       const cost = (it.variant?.costCents ?? 0) * it.quantity
       const missing = !it.variant?.costCents
       if (missing) anyMissingCost = true
@@ -152,6 +168,15 @@ export default async function ReportsPage({
           {invoices.length > 0 && `, and include ${invoices.length} paid invoice${invoices.length === 1 ? '' : 's'} (${money(invoiceRevenueCents)} custom/wholesale)`}.
           Gross incl. tax + shipping: {money(grossCents)} · shipping collected: {money(shippingCents)}.
           {anyMissingCost && ' ⚠ Some items have no cost set, so COGS/profit are understated — set variant costs or link recipes.'}
+          {(giftCardSoldCents > 0 || giftCardRedeemedCents > 0) && (
+            <>
+              {' '}
+              Gift certificates: <strong>{money(giftCardSoldCents)}</strong> sold (cash in, but not
+              income until it&apos;s spent, so it&apos;s excluded from net sales) ·{' '}
+              <strong>{money(giftCardRedeemedCents)}</strong> redeemed (goods already counted in
+              net sales, just paid for with a certificate instead of cash).
+            </>
+          )}
         </p>
       </div>
 

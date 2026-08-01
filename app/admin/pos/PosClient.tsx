@@ -2,7 +2,23 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createPosSale, type PosTender, type PosDiscount } from '@/app/lib/actions/pos'
+import {
+  createPosSale,
+  type PosTender,
+  type PosDiscount,
+  type PosGiftCardSale,
+} from '@/app/lib/actions/pos'
+import { lookupGiftCard } from '@/app/lib/actions/gift-cards'
+
+/** A certificate the customer is paying WITH, once we've looked it up. */
+interface AppliedGiftCard {
+  id: string
+  formattedCode: string
+  /** What's on the card. */
+  balanceCents: number
+  /** What we're actually taking off this sale (min of balance and what's due). */
+  amountCents: number
+}
 
 interface PosVariant {
   id: string
@@ -57,14 +73,141 @@ function Keypad({ onKey }: { onKey: (k: string) => void }) {
 }
 
 // ─── Tender modal ───────────────────────────────────────────────────────────
+/**
+ * Applying a gift certificate at the till. Kept at module scope, not nested in
+ * TenderSheet — an inline sub-component remounts its <input> on every parent
+ * render and the code field loses focus after one keystroke.
+ */
+function GiftRedeemPanel({
+  applied,
+  maxCents,
+  onApply,
+  onRemove,
+}: {
+  applied: AppliedGiftCard | null
+  /** Ceiling on what a certificate may cover — excludes certificates being
+   *  sold on this same sale. Zero means redemption isn't offered at all. */
+  maxCents: number
+  onApply: (c: AppliedGiftCard) => void
+  onRemove: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function lookup() {
+    if (busy || !code.trim()) return
+    setBusy(true)
+    setErr(null)
+    const res = await lookupGiftCard(code)
+    setBusy(false)
+    if (!res.ok) {
+      setErr(res.error)
+      return
+    }
+    onApply({
+      id: res.card.id,
+      formattedCode: res.card.formattedCode,
+      balanceCents: res.card.balanceCents,
+      amountCents: Math.min(res.card.balanceCents, maxCents),
+    })
+    setCode('')
+    setOpen(false)
+  }
+
+  if (maxCents <= 0 && !applied) return null
+
+  if (applied) {
+    return (
+      <div className="mb-3 rounded-lg border border-green-300 bg-green-50 p-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="font-mono text-xs font-semibold text-green-900">
+              {applied.formattedCode}
+            </div>
+            <div className="text-xs text-green-800">
+              Applying {money(applied.amountCents)}
+              {applied.balanceCents > applied.amountCents &&
+                ` · ${money(applied.balanceCents - applied.amountCents)} left after`}
+            </div>
+          </div>
+          <button type="button" onClick={onRemove} className="text-xs text-green-900 underline">
+            Remove
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mb-3">
+      {open ? (
+        <div className="rounded-lg border border-brand-warm/60 bg-white p-2">
+          <div className="flex gap-2">
+            <input
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && lookup()}
+              placeholder="SM-XXXX-XXXX-XXX"
+              autoFocus
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              className="input flex-1 font-mono text-sm"
+            />
+            <button
+              type="button"
+              onClick={lookup}
+              disabled={busy}
+              className="btn-primary px-4 py-1.5 text-sm disabled:opacity-50"
+            >
+              {busy ? '…' : 'Apply'}
+            </button>
+          </div>
+          {err && <p className="mt-1.5 text-xs text-red-600">{err}</p>}
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false)
+              setErr(null)
+            }}
+            className="mt-1.5 text-xs text-brand-brown/50"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="text-xs text-brand-brown/60 hover:text-brand-terra"
+        >
+          + Use a gift certificate
+        </button>
+      )}
+    </div>
+  )
+}
+
 function TenderSheet({
   totalCents,
+  giftCard,
+  giftCardMaxCents,
+  onApplyGiftCard,
+  onRemoveGiftCard,
   busy,
   error,
   onCancel,
   onComplete,
 }: {
+  /** Full price of the sale. A certificate is a tender, so it does not change
+   *  this — it reduces what's left to collect. */
   totalCents: number
+  giftCard: AppliedGiftCard | null
+  giftCardMaxCents: number
+  onApplyGiftCard: (c: AppliedGiftCard) => void
+  onRemoveGiftCard: () => void
   busy: boolean
   error: string | null
   onCancel: () => void
@@ -79,6 +222,9 @@ function TenderSheet({
   const [legBMethod, setLegBMethod] = useState('Card')
 
   const entryCents = dollarsToCents(entry || '0')
+  // What's actually left to collect in cash/card once the certificate is on.
+  const dueCents = Math.max(0, totalCents - (giftCard?.amountCents ?? 0))
+  const fullyCovered = dueCents === 0
 
   function pushKey(k: string) {
     setEntry((prev) => {
@@ -93,24 +239,24 @@ function TenderSheet({
 
   // Smart quick-cash presets: exact, then the next round bills above the total.
   const quickCash = useMemo(() => {
-    const set = new Set<number>([totalCents])
-    const d = totalCents / 100
+    const set = new Set<number>([dueCents])
+    const d = dueCents / 100
     set.add(Math.ceil(d / 5) * 5 * 100)
     set.add(Math.ceil(d / 10) * 10 * 100)
     set.add(Math.ceil(d / 20) * 20 * 100)
     ;[20, 40, 50, 100].forEach((b) => set.add(b * 100))
     return Array.from(set)
-      .filter((v) => v >= totalCents)
+      .filter((v) => v >= dueCents)
       .sort((a, b) => a - b)
       .slice(0, 4)
-  }, [totalCents])
+  }, [dueCents])
 
-  const changeCents = method === 'Cash' && entryCents > totalCents ? entryCents - totalCents : 0
-  const cashOk = method !== 'Cash' || entryCents >= totalCents
+  const changeCents = method === 'Cash' && entryCents > dueCents ? entryCents - dueCents : 0
+  const cashOk = method !== 'Cash' || entryCents >= dueCents
 
   // Split: leg A amount from keypad, leg B = remainder
-  const legA = Math.min(Math.max(entryCents, 0), totalCents)
-  const legB = totalCents - legA
+  const legA = Math.min(Math.max(entryCents, 0), dueCents)
+  const legB = dueCents - legA
   const splitOk = legA > 0 && legB > 0 && legAMethod !== legBMethod
 
   function methodChips(active: string, set: (m: string) => void, size: 'lg' | 'sm' = 'lg') {
@@ -137,6 +283,11 @@ function TenderSheet({
 
   function finish() {
     if (busy) return
+    // The certificate covered the whole sale — there is nothing to collect.
+    if (fullyCovered) {
+      onComplete({ tenders: [] })
+      return
+    }
     if (split) {
       if (!splitOk) return
       onComplete({
@@ -148,13 +299,13 @@ function TenderSheet({
       return
     }
     if (method === 'Cash') {
-      if (entryCents < totalCents) return
+      if (entryCents < dueCents) return
       onComplete({
-        tenders: [{ method: 'Cash', amountCents: totalCents }],
+        tenders: [{ method: 'Cash', amountCents: dueCents }],
         cashTenderedCents: entryCents,
       })
     } else {
-      onComplete({ tenders: [{ method, amountCents: totalCents, note: note.trim() || undefined }] })
+      onComplete({ tenders: [{ method, amountCents: dueCents, note: note.trim() || undefined }] })
     }
   }
 
@@ -163,13 +314,33 @@ function TenderSheet({
       <div className="w-full sm:max-w-md max-h-[92dvh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-surface-warm p-4 shadow-xl">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="font-display text-xl font-bold text-brand-dark">
-            Charge {money(totalCents)}
+            Charge {money(dueCents)}
+            {giftCard && (
+              <span className="ml-2 text-sm font-normal text-brand-brown/50 line-through">
+                {money(totalCents)}
+              </span>
+            )}
           </h2>
           <button type="button" onClick={onCancel} className="text-brand-brown/60 hover:text-brand-brown text-sm">
             ← Back to sale
           </button>
         </div>
 
+        <GiftRedeemPanel
+          applied={giftCard}
+          maxCents={giftCardMaxCents}
+          onApply={onApplyGiftCard}
+          onRemove={onRemoveGiftCard}
+        />
+
+        {fullyCovered ? (
+          <div className="rounded-lg bg-green-50 p-4 text-center">
+            <p className="text-sm text-green-800">
+              The certificate covers the whole sale. Nothing to collect.
+            </p>
+          </div>
+        ) : (
+          <>
         {/* Single vs split toggle */}
         <div className="mb-3 grid grid-cols-2 gap-2">
           <button
@@ -235,7 +406,7 @@ function TenderSheet({
                   className="input w-full text-sm"
                 />
                 <p className="mt-2 text-xs text-brand-brown/50">
-                  Confirm the {money(totalCents)} payment was received in {method}, then tap Done.
+                  Confirm the {money(dueCents)} payment was received in {method}, then tap Done.
                 </p>
               </div>
             )}
@@ -268,16 +439,18 @@ function TenderSheet({
             )}
           </div>
         )}
+          </>
+        )}
 
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
 
         <button
           type="button"
           onClick={finish}
-          disabled={busy || (split ? !splitOk : !cashOk)}
+          disabled={busy || (fullyCovered ? false : split ? !splitOk : !cashOk)}
           className="btn-primary mt-4 h-14 w-full text-base disabled:opacity-50"
         >
-          {busy ? 'Recording…' : 'Done'}
+          {busy ? 'Recording…' : fullyCovered ? 'Complete sale' : 'Done'}
         </button>
       </div>
     </div>
@@ -295,6 +468,9 @@ function CartPanel({
   setTaxable,
   taxRate,
   total,
+  giftCards,
+  onAddGiftCard,
+  onRemoveGiftCard,
   customer,
   setCustomer,
   onQty,
@@ -314,6 +490,9 @@ function CartPanel({
   setTaxable: (b: boolean) => void
   taxRate: number
   total: number
+  giftCards: PosGiftCardSale[]
+  onAddGiftCard: (amountCents: number) => void
+  onRemoveGiftCard: (index: number) => void
   customer: { name: string; email: string; phone: string }
   setCustomer: (c: { name: string; email: string; phone: string }) => void
   onQty: (id: string, qty: number) => void
@@ -326,10 +505,20 @@ function CartPanel({
 }) {
   const [showDiscount, setShowDiscount] = useState(false)
   const [showCustomer, setShowCustomer] = useState(false)
+  const [showGift, setShowGift] = useState(false)
+  const [giftInput, setGiftInput] = useState('')
   const [confirmClear, setConfirmClear] = useState(false)
   const [discMode, setDiscMode] = useState<'pct' | 'amt'>(discount?.mode ?? 'amt')
   const [discInput, setDiscInput] = useState('')
   const count = lines.reduce((n, l) => n + l.qty, 0)
+  const giftTotal = giftCards.reduce((s, g) => s + g.amountCents, 0)
+
+  function addGift(dollars: number) {
+    if (!(dollars > 0)) return
+    onAddGiftCard(Math.round(dollars * 100))
+    setGiftInput('')
+    setShowGift(false)
+  }
 
   function applyDiscount(mode: 'pct' | 'amt', value: number) {
     if (value <= 0) {
@@ -385,7 +574,7 @@ function CartPanel({
 
       {/* Lines */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {lines.length === 0 ? (
+        {lines.length === 0 && giftCards.length === 0 ? (
           <p className="py-6 text-sm text-brand-brown/50">Tap products to add them.</p>
         ) : (
           <div className="space-y-2.5">
@@ -414,6 +603,28 @@ function CartPanel({
                   {money(l.v.priceCents * l.qty)}
                 </span>
                 <button type="button" onClick={() => onRemove(l.v.id)} aria-label="Remove" className="text-brand-brown/30 hover:text-red-500">
+                  ✕
+                </button>
+              </div>
+            ))}
+
+            {/* Certificates being sold. No quantity stepper — each one is its
+                own certificate with its own code, so two $10s aren't a "2". */}
+            {giftCards.map((g, i) => (
+              <div key={`gc-${i}`} className="flex items-center gap-2 text-sm">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium text-brand-dark">Gift certificate</div>
+                  <div className="truncate text-xs text-brand-brown/50">No tax · code on print</div>
+                </div>
+                <span className="w-16 text-right font-medium tabular-nums text-brand-dark">
+                  {money(g.amountCents)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onRemoveGiftCard(i)}
+                  aria-label="Remove certificate"
+                  className="text-brand-brown/30 hover:text-red-500"
+                >
                   ✕
                 </button>
               </div>
@@ -480,13 +691,64 @@ function CartPanel({
             </div>
           )}
 
+          {/* Sell a certificate */}
+          {showGift ? (
+            <div className="space-y-2 rounded-lg border border-brand-warm/60 bg-white p-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-brand-brown/80">Gift certificate</span>
+                <button type="button" onClick={() => setShowGift(false)} className="text-xs text-brand-brown/50">
+                  Hide
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {[10, 20, 25, 50].map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => addGift(d)}
+                    className="rounded-full bg-brand-warm/50 px-3 py-1.5 text-xs font-medium text-brand-brown"
+                  >
+                    ${d}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  value={giftInput}
+                  onChange={(e) => setGiftInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addGift(parseFloat(giftInput || '0'))}
+                  placeholder="Other amount"
+                  className="input flex-1 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => addGift(parseFloat(giftInput || '0'))}
+                  className="btn-primary px-3 py-1.5 text-sm"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setShowGift(true)} className="block text-xs text-brand-brown/50 hover:text-brand-terra">
+              + Sell a gift certificate
+            </button>
+          )}
+
           <label className="flex items-center justify-between text-brand-brown/70">
             <span className="flex items-center gap-2">
               <input type="checkbox" checked={taxable} onChange={(e) => setTaxable(e.target.checked)} className="h-4 w-4 rounded border-brand-warm text-brand-terra focus:ring-brand-terra" />
               Tax ({(taxRate * 100).toFixed(0)}%)
             </span>
-            <span className="tabular-nums">{money(taxable ? Math.round((subtotal - discountCents) * taxRate) : 0)}</span>
+            <span className="tabular-nums">{money(taxable ? Math.round((subtotal - giftTotal - discountCents) * taxRate) : 0)}</span>
           </label>
+          {giftTotal > 0 && (
+            <p className="text-[11px] text-brand-brown/50">
+              Certificates aren&apos;t taxed here — tax gets charged on whatever they buy later.
+            </p>
+          )}
           <div className="flex justify-between border-t border-brand-warm/40 pt-2 font-display text-lg font-semibold text-brand-dark">
             <span>Total</span>
             <span className="tabular-nums">{money(total)}</span>
@@ -516,7 +778,11 @@ function CartPanel({
 
         {error && !soldOutId && <p className="mt-2 text-sm text-red-600">{error}</p>}
 
-        <button onClick={onCharge} disabled={lines.length === 0} className="btn-primary mt-3 h-14 w-full text-base disabled:opacity-50">
+        <button
+          onClick={onCharge}
+          disabled={lines.length === 0 && giftCards.length === 0}
+          className="btn-primary mt-3 h-14 w-full text-base disabled:opacity-50"
+        >
           Charge · {money(total)}
         </button>
       </div>
@@ -540,6 +806,8 @@ export default function PosClient({
   const [cart, setCart] = useState<Record<string, number>>({})
   const [taxable, setTaxable] = useState(true)
   const [discount, setDiscount] = useState<PosDiscount | null>(null)
+  const [giftCards, setGiftCards] = useState<PosGiftCardSale[]>([])
+  const [redeemCard, setRedeemCard] = useState<AppliedGiftCard | null>(null)
   const [customer, setCustomer] = useState({ name: '', email: '', phone: '' })
   const [hideOOS, setHideOOS] = useState(hideInitial)
   const [busy, setBusy] = useState(false)
@@ -547,9 +815,20 @@ export default function PosClient({
   const [soldOutId, setSoldOutId] = useState<string | null>(null)
   const [tenderOpen, setTenderOpen] = useState(false)
   const [cartSheetOpen, setCartSheetOpen] = useState(false)
-  const [done, setDone] = useState<{ orderNumber: number; totalCents: number; changeCents: number; email: string } | null>(null)
+  const [done, setDone] = useState<{
+    orderNumber: number
+    totalCents: number
+    changeCents: number
+    giftCardCents: number
+    issuedGiftCards: { id: string; code: string; amountCents: number }[]
+    email: string
+  } | null>(null)
   const submittingRef = useRef(false)
   const hydrated = useRef(false)
+  /** Identifies one checkout attempt. Minted when the tender sheet opens and
+   *  held until a sale succeeds, so a retried request is recognised as the
+   *  same attempt rather than a second one. */
+  const saleIdRef = useRef<string | null>(null)
 
   const vMap = useMemo(() => new Map(variants.map((v) => [v.id, v])), [variants])
 
@@ -568,6 +847,7 @@ export default function PosClient({
           setCart(clean)
         }
         if (s.discount) setDiscount(s.discount)
+        if (Array.isArray(s.giftCards)) setGiftCards(s.giftCards)
         if (typeof s.taxable === 'boolean') setTaxable(s.taxable)
         if (s.customer) setCustomer(s.customer)
       }
@@ -582,15 +862,20 @@ export default function PosClient({
   useEffect(() => {
     if (!hydrated.current) return
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ cart, discount, taxable, customer }))
+      // redeemCard is deliberately NOT persisted — a certificate balance can
+      // change on another till, so it's re-looked-up each time.
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ cart, discount, giftCards, taxable, customer }),
+      )
     } catch {
       /* storage full / unavailable — non-fatal */
     }
-  }, [cart, discount, taxable, customer])
+  }, [cart, discount, giftCards, taxable, customer])
 
   // Warn before leaving with an unfinished sale.
   useEffect(() => {
-    const has = Object.values(cart).some((q) => q > 0)
+    const has = Object.values(cart).some((q) => q > 0) || giftCards.length > 0
     if (!has) return
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault()
@@ -598,7 +883,7 @@ export default function PosClient({
     }
     window.addEventListener('beforeunload', handler)
     return () => window.removeEventListener('beforeunload', handler)
-  }, [cart])
+  }, [cart, giftCards])
 
   const categories = useMemo(() => {
     const set = new Set<string>()
@@ -641,14 +926,24 @@ export default function PosClient({
     [cart, vMap],
   )
 
-  const subtotal = lines.reduce((s, l) => s + l.v.priceCents * l.qty, 0)
+  // Mirrors createPosSale exactly: certificates are never taxed and never
+  // discounted, so the discount and tax bases are merchandise only.
+  const merchSubtotal = lines.reduce((s, l) => s + l.v.priceCents * l.qty, 0)
+  const giftSoldCents = giftCards.reduce((s, g) => s + g.amountCents, 0)
+  const subtotal = merchSubtotal + giftSoldCents
   const discountCents = useMemo(() => {
     if (!discount || discount.value <= 0) return 0
-    const raw = discount.mode === 'pct' ? Math.round((subtotal * Math.min(discount.value, 100)) / 100) : Math.round(discount.value)
-    return Math.max(0, Math.min(raw, subtotal))
-  }, [discount, subtotal])
-  const tax = taxable ? Math.round((subtotal - discountCents) * taxRate) : 0
-  const total = subtotal - discountCents + tax
+    const raw =
+      discount.mode === 'pct'
+        ? Math.round((merchSubtotal * Math.min(discount.value, 100)) / 100)
+        : Math.round(discount.value)
+    return Math.max(0, Math.min(raw, merchSubtotal))
+  }, [discount, merchSubtotal])
+  const tax = taxable ? Math.round((merchSubtotal - discountCents) * taxRate) : 0
+  const total = merchSubtotal - discountCents + tax + giftSoldCents
+  // A certificate can't pay for a certificate, so redemption is capped at the
+  // merchandise part of the sale.
+  const redeemableCents = Math.max(0, total - giftSoldCents)
 
   function add(v: PosVariant) {
     setError(null)
@@ -682,10 +977,38 @@ export default function PosClient({
   function clearCart() {
     setCart({})
     setDiscount(null)
+    setGiftCards([])
+    setRedeemCard(null)
   }
 
+  function addGiftCard(amountCents: number) {
+    setError(null)
+    setGiftCards((prev) => [...prev, { amountCents }])
+  }
+  function removeGiftCard(index: number) {
+    setGiftCards((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  function openTender() {
+    // One id per checkout attempt, held until the sale succeeds.
+    if (!saleIdRef.current) {
+      saleIdRef.current =
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    }
+    setTenderOpen(true)
+  }
+
+  // Re-clamp every render: the operator can shrink the cart after applying a
+  // certificate, and we must never take more off the card than the sale needs.
+  const appliedGiftCard: AppliedGiftCard | null = redeemCard
+    ? { ...redeemCard, amountCents: Math.min(redeemCard.balanceCents, redeemableCents) }
+    : null
+  const giftCardCents = appliedGiftCard?.amountCents ?? 0
+
   async function submit(r: { tenders: PosTender[]; cashTenderedCents?: number }) {
-    if (submittingRef.current || lines.length === 0) return
+    if (submittingRef.current || (lines.length === 0 && giftCards.length === 0)) return
     submittingRef.current = true
     setBusy(true)
     setError(null)
@@ -697,6 +1020,14 @@ export default function PosClient({
         discount,
         tenders: r.tenders,
         cashTenderedCents: r.cashTenderedCents,
+        giftCardsSold: giftCards,
+        giftCardPayment:
+          appliedGiftCard && appliedGiftCard.amountCents > 0
+            ? { cardId: appliedGiftCard.id, amountCents: appliedGiftCard.amountCents }
+            : null,
+        // Stable for this checkout attempt, so a retried request can't spend
+        // the certificate twice.
+        clientSaleId: saleIdRef.current ?? undefined,
         customerName: customer.name.trim() || undefined,
         customerEmail: customer.email.trim() || undefined,
         customerPhone: customer.phone.trim() || undefined,
@@ -710,7 +1041,15 @@ export default function PosClient({
         }
         return
       }
-      setDone({ orderNumber: res.orderNumber, totalCents: res.totalCents, changeCents: res.changeCents, email: customer.email.trim() })
+      setDone({
+        orderNumber: res.orderNumber,
+        totalCents: res.totalCents,
+        changeCents: res.changeCents,
+        giftCardCents: res.giftCardCents,
+        issuedGiftCards: res.issuedGiftCards,
+        email: customer.email.trim(),
+      })
+      saleIdRef.current = null
       setTenderOpen(false)
       setCartSheetOpen(false)
       try {
@@ -729,6 +1068,9 @@ export default function PosClient({
   function newSale() {
     setCart({})
     setDiscount(null)
+    setGiftCards([])
+    setRedeemCard(null)
+    saleIdRef.current = null
     setCustomer({ name: '', email: '', phone: '' })
     setSearch('')
     setCategory('All')
@@ -764,12 +1106,50 @@ export default function PosClient({
         <p className="mt-1 text-sm text-brand-brown/60">
           Order #{done.orderNumber} · {money(done.totalCents)} · stock updated
         </p>
+        {done.giftCardCents > 0 && (
+          <p className="mt-1 text-sm text-brand-brown/60">
+            {money(done.giftCardCents)} paid by gift certificate
+          </p>
+        )}
         {done.changeCents > 0 && (
           <div className="mx-auto mt-4 w-fit rounded-lg bg-green-100 px-6 py-3">
             <div className="text-xs text-brand-brown/60">Change due</div>
             <div className="font-display text-3xl font-bold tabular-nums text-green-700">{money(done.changeCents)}</div>
           </div>
         )}
+
+        {/* Certificates just sold — the customer leaves with nothing until
+            these are printed, so make that the obvious next tap. */}
+        {done.issuedGiftCards.length > 0 && (
+          <div className="mt-4 rounded-lg border border-brand-warm/60 bg-white p-3 text-left">
+            <div className="text-xs font-medium text-brand-brown/80">
+              {done.issuedGiftCards.length === 1
+                ? 'Certificate sold — print it for the customer'
+                : `${done.issuedGiftCards.length} certificates sold — print them for the customer`}
+            </div>
+            <div className="mt-2 space-y-2">
+              {done.issuedGiftCards.map((g) => (
+                <div key={g.id} className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-xs text-brand-dark">
+                    {g.code.replace(/^(.{4})(.{4})(.*)$/, 'SM-$1-$2-$3')}
+                  </span>
+                  <span className="text-xs tabular-nums text-brand-brown/60">
+                    {money(g.amountCents)}
+                  </span>
+                  <a
+                    href={`/admin/gift-cards/${g.id}/print`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-secondary px-3 py-1 text-xs"
+                  >
+                    Print
+                  </a>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {done.email && <p className="mt-3 text-xs text-brand-brown/50">Receipt queued for {done.email}</p>}
         <button onClick={newSale} className="btn-primary mt-6 h-12 px-8">
           Next customer
@@ -893,12 +1273,15 @@ export default function PosClient({
             setTaxable={setTaxable}
             taxRate={taxRate}
             total={total}
+            giftCards={giftCards}
+            onAddGiftCard={addGiftCard}
+            onRemoveGiftCard={removeGiftCard}
             customer={customer}
             setCustomer={setCustomer}
             onQty={setQty}
             onRemove={removeLine}
             onClear={clearCart}
-            onCharge={() => setTenderOpen(true)}
+            onCharge={openTender}
             soldOutId={soldOutId}
             error={error}
           />
@@ -906,11 +1289,11 @@ export default function PosClient({
       </aside>
 
       {/* Mobile: bottom bar → cart sheet */}
-      {lines.length > 0 && (
+      {(lines.length > 0 || giftCards.length > 0) && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-brand-warm/60 bg-white/95 px-4 py-3 shadow-[0_-2px_10px_rgba(0,0,0,0.06)] backdrop-blur md:hidden">
           <button onClick={() => setCartSheetOpen(true)} className="btn-primary flex w-full items-center justify-center gap-2 py-3">
             <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-white/25 px-1.5 text-xs font-bold">
-              {lines.reduce((n, l) => n + l.qty, 0)}
+              {lines.reduce((n, l) => n + l.qty, 0) + giftCards.length}
             </span>
             View sale · {money(total)}
           </button>
@@ -930,12 +1313,15 @@ export default function PosClient({
               setTaxable={setTaxable}
               taxRate={taxRate}
               total={total}
+              giftCards={giftCards}
+              onAddGiftCard={addGiftCard}
+              onRemoveGiftCard={removeGiftCard}
               customer={customer}
               setCustomer={setCustomer}
               onQty={setQty}
               onRemove={removeLine}
               onClear={clearCart}
-              onCharge={() => setTenderOpen(true)}
+              onCharge={openTender}
               soldOutId={soldOutId}
               error={error}
               onClose={() => setCartSheetOpen(false)}
@@ -947,6 +1333,10 @@ export default function PosClient({
       {tenderOpen && (
         <TenderSheet
           totalCents={total}
+          giftCard={appliedGiftCard}
+          giftCardMaxCents={redeemableCents}
+          onApplyGiftCard={setRedeemCard}
+          onRemoveGiftCard={() => setRedeemCard(null)}
           busy={busy}
           error={error}
           onCancel={() => { setTenderOpen(false); setError(null) }}
