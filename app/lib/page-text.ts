@@ -62,7 +62,7 @@ export const PAGE_TEXT_REGISTRY: readonly PageTextField[] = [
       "Body scrubs that leave your skin soft without a chemistry-class ingredient list",
       'Bath salts for long soaks on the days you need one',
       "Wax melts and room fragrance sprays so your house smells like something you actually want to come home to",
-      'Lip balm in a handful of flavors — Bubblegum, Peppermint, Spearmint',
+      'Lip balm in a handful of flavors — Peppermint, Spearmint',
     ].join('\n'),
   },
   {
@@ -71,7 +71,7 @@ export const PAGE_TEXT_REGISTRY: readonly PageTextField[] = [
     label: 'Middle paragraph (ingredients / inspiration)',
     kind: 'long',
     fallback:
-      "I stick to natural oils, butters, and skin-safe fragrance — nothing you can't pronounce, nothing you don't need. The scents are inspired by the stuff I grew up around: wildflowers after a rain, fresh-baked mornings, wood smoke on a back porch.",
+      "I stick to natural oils, butters, and skin-safe fragrance — nothing you can't pronounce, nothing you don't need. The scents range from cozy to bright to grown-up — think Lavender, Strawberry Pound Cake, and Mahogany & Teakwood.",
   },
   {
     group: 'About page',

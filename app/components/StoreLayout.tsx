@@ -134,7 +134,7 @@ function BrandMark({ logoUrl }: { logoUrl: string | null }) {
       <img
         src={logoUrl}
         alt="Smelly Melly"
-        className="h-12 w-auto sm:h-14 object-contain"
+        className="h-36 w-auto sm:h-44 object-contain"
       />
     )
   }
