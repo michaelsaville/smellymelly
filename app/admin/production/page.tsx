@@ -9,8 +9,9 @@ export default async function ProductionPage() {
 
   const [openItems, lowMaterialsRaw] = await Promise.all([
     // Line items on orders that still need making (paid, not yet shipped/picked).
+    // GIFT_CARD lines are excluded — a certificate isn't something Mel makes.
     prisma.sM_OrderItem.findMany({
-      where: { order: { status: { in: ['PAID', 'PROCESSING'] } } },
+      where: { order: { status: { in: ['PAID', 'PROCESSING'] } }, kind: 'PRODUCT' },
       select: { variantId: true, quantity: true, productName: true, variantName: true },
     }),
     prisma.sM_Material.findMany({
@@ -22,6 +23,7 @@ export default async function ProductionPage() {
   // Aggregate demand per variant.
   const demand = new Map<string, { name: string; qty: number }>()
   for (const it of openItems) {
+    if (!it.variantId) continue // belt-and-braces; the kind filter already excludes these
     const cur = demand.get(it.variantId) ?? {
       name: `${it.productName} · ${it.variantName}`,
       qty: 0,

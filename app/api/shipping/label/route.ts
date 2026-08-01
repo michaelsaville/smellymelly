@@ -40,7 +40,9 @@ export async function POST(req: NextRequest) {
   // Calculate total weight
   let totalWeightOz = 0
   for (const item of order.items) {
-    if (item.variant.weightOz) {
+    // GIFT_CARD lines have no variant and no weight; the 4oz floor below
+    // covers a certificate-only envelope.
+    if (item.variant?.weightOz) {
       totalWeightOz += item.variant.weightOz * item.quantity
     }
   }

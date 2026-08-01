@@ -104,7 +104,9 @@ export default async function OrderDetailPage({
             </h2>
             <div className="divide-y divide-brand-warm/40">
               {order.items.map((item) => {
-                const image = item.variant.product.images[0]
+                // Null on GIFT_CARD lines — a certificate has no variant, so
+                // no image and no SKU. productName/variantName are still set.
+                const image = item.variant?.product.images[0]
                 const scent = parseVariantScent(item.variantName)
                 const hasScent = !!scent && scent.toLowerCase() !== 'standard'
                 const sizeIdx = item.variantName.lastIndexOf(' - ')
@@ -138,9 +140,9 @@ export default async function OrderDetailPage({
                           Scent: {scent}
                         </div>
                       )}
-                      {(detail || item.variant.sku) && (
+                      {(detail || item.variant?.sku) && (
                         <div className="text-xs text-brand-brown/60">
-                          {[detail, item.variant.sku ? `SKU ${item.variant.sku}` : '']
+                          {[detail, item.variant?.sku ? `SKU ${item.variant.sku}` : '']
                             .filter(Boolean)
                             .join(' · ')}
                         </div>

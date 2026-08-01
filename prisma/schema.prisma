@@ -51,18 +51,18 @@ model SM_Category {
 // a "Contains X" pill on the product page when matched. Mel manages
 // this list in /admin/settings — no code changes needed to add/edit.
 model SM_Allergen {
-  id        String   @id @default(cuid())
-  label     String   // pill text, e.g. "Shea"
+  id         String   @id @default(cuid())
+  label      String // pill text, e.g. "Shea"
   // Comma-separated terms to match (case-insensitive, word-boundary).
   // e.g. "shea" or "beeswax, bees wax". Built into a regex at scan time.
   matchTerms String
   // "high" → red pill (top-tier nut/dairy concerns)
   // "normal" → amber pill (everything else)
-  severity  String   @default("normal")
-  sortOrder Int      @default(0)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  severity   String   @default("normal")
+  sortOrder  Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@map("sm_allergens")
   @@schema("smellymelly")
@@ -150,22 +150,22 @@ model SM_ProductImage {
 // ─── SCENTS (reusable scent options) ──────────────────────────────────────
 
 model SM_Scent {
-  id        String   @id @default(cuid())
-  name      String   @unique
+  id                 String   @id @default(cuid())
+  name               String   @unique
   /// Customer-facing scent description. Initially AI-generated via the
   /// /admin/scents/descriptions tool, then editable. Renders on the
   /// printable scent-descriptions paper form.
-  description String? @db.Text
-  sortOrder Int      @default(0)
-  isActive  Boolean  @default(true)
+  description        String?  @db.Text
+  sortOrder          Int      @default(0)
+  isActive           Boolean  @default(true)
   /// Include this scent on the printable scent-descriptions sheet. Default
   /// true so every existing scent keeps printing. Unchecking it in
   /// /admin/scents/descriptions hides the scent from /scent-descriptions/print
   /// without disabling it everywhere — used to drop out-of-stock or
   /// duplicate entries from the printed copy. Distinct from isActive.
-  onDescriptionSheet Boolean @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  onDescriptionSheet Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   menuGroupLinks SM_MenuGroupScent[]
   categoryLinks  SM_ScentCategory[]
@@ -337,16 +337,24 @@ model SM_Order {
   discountCode  String?
   discountCents Int     @default(0)
 
+  // Gift certificate applied as a TENDER — not a discount. Taken off the
+  // final total AFTER tax and shipping, so it never reduces the taxable base.
+  // totalCents stays the full price of the order; this is how much of that
+  // total was paid with a certificate, and (totalCents - giftCardCents) is
+  // what the buyer actually owed in cash/card. The authoritative record of
+  // which card paid is the SM_GiftCardTxn ledger row carrying this orderId.
+  giftCardCents Int @default(0)
+
   // Payment tracking
-  paymentMethod   SM_PaymentMethod @default(MANUAL)
+  paymentMethod         SM_PaymentMethod @default(MANUAL)
   // For MANUAL tender — filled in by admin when marking the order paid.
   // Free-form so "Venmo 4/18", "Cash App @melissaj", "Check #301" all work.
-  manualPaymentNote String?
-  squarePaymentId String?
-  squareOrderId   String?
+  manualPaymentNote     String?
+  squarePaymentId       String?
+  squareOrderId         String?
   // Unique so a retried/double-submitted checkout with the same confirmed
   // PaymentIntent can't create a second PAID order (double stock decrement).
-  stripePaymentIntentId String? @unique
+  stripePaymentIntentId String?          @unique
 
   // Shipping
   trackingNumber String?
@@ -370,12 +378,28 @@ model SM_Order {
   @@schema("smellymelly")
 }
 
+/// What a line represents. PRODUCT lines are real merchandise and drive
+/// revenue, COGS, tax and stock. GIFT_CARD lines are the SALE of a gift
+/// certificate — money in, but NOT revenue (it's a liability until redeemed),
+/// and never taxed or discounted. Reports must filter on this.
+enum SM_OrderItemKind {
+  PRODUCT
+  GIFT_CARD
+
+  @@schema("smellymelly")
+}
+
 model SM_OrderItem {
-  id          String            @id @default(cuid())
+  id          String             @id @default(cuid())
   orderId     String
-  order       SM_Order          @relation(fields: [orderId], references: [id])
-  variantId   String
-  variant     SM_ProductVariant @relation(fields: [variantId], references: [id])
+  order       SM_Order           @relation(fields: [orderId], references: [id])
+  kind        SM_OrderItemKind   @default(PRODUCT)
+  /// Null for GIFT_CARD lines — a certificate is not a product variant.
+  variantId   String?
+  variant     SM_ProductVariant? @relation(fields: [variantId], references: [id])
+  /// Set on GIFT_CARD lines — the certificate this line sold.
+  giftCardId  String?
+  giftCard    SM_GiftCard?       @relation("SoldOnLine", fields: [giftCardId], references: [id])
   productName String
   variantName String
   quantity    Int
@@ -416,23 +440,23 @@ model SM_Host {
 /// A fundraiser campaign — single-price variants curated for one event.
 /// Lives at /party/[slug]; host views status at /host/[hostToken].
 model SM_Campaign {
-  id          String            @id @default(cuid())
-  slug        String            @unique
-  name        String
-  description String?
-  hostId      String
-  host        SM_Host           @relation(fields: [hostId], references: [id])
+  id                 String            @id @default(cuid())
+  slug               String            @unique
+  name               String
+  description        String?
+  hostId             String
+  host               SM_Host           @relation(fields: [hostId], references: [id])
   /// Opaque token used in /host/[token] magic-link URLs.
-  hostToken   String            @unique
+  hostToken          String            @unique
   /// What the buyer pays per item, regardless of the variant's retail price.
   customerPriceCents Int
   /// What Mel keeps per item sold. Host's cut = customerPriceCents − mellyCutCents.
   mellyCutCents      Int
-  status      SM_CampaignStatus @default(DRAFT)
-  startsAt    DateTime?
-  endsAt      DateTime?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  status             SM_CampaignStatus @default(DRAFT)
+  startsAt           DateTime?
+  endsAt             DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
 
   variants SM_CampaignVariant[]
   orders   SM_Order[]
@@ -457,12 +481,12 @@ model SM_PageText {
 }
 
 model SM_CampaignVariant {
-  id         String   @id @default(cuid())
+  id         String            @id @default(cuid())
   campaignId String
-  campaign   SM_Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign   SM_Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   variantId  String
   variant    SM_ProductVariant @relation(fields: [variantId], references: [id])
-  createdAt  DateTime @default(now())
+  createdAt  DateTime          @default(now())
 
   @@unique([campaignId, variantId])
   @@map("sm_campaign_variants")
@@ -495,10 +519,10 @@ model SM_Customer {
 
   // Phase 7 — wholesale + birthdays + email-broadcast tracking.
   // wholesaleDiscountPct is applied on the subtotal at checkout (0-100).
-  birthday             DateTime?
-  wholesaleDiscountPct Int        @default(0)
-  thankYouEmailSentAt  DateTime?
-  lastReEngagementAt   DateTime?
+  birthday              DateTime?
+  wholesaleDiscountPct  Int       @default(0)
+  thankYouEmailSentAt   DateTime?
+  lastReEngagementAt    DateTime?
   // Year of the last birthday email sent so we only send once per year.
   lastBirthdayEmailYear Int?
 
@@ -605,10 +629,10 @@ enum SM_DiscountType {
 /// merchandise subtotal (after any wholesale discount, before tax/shipping).
 /// usedCount is incremented ONLY after payment succeeds (see checkout route).
 model SM_DiscountCode {
-  id   String          @id @default(cuid())
+  id    String          @id @default(cuid())
   /// Stored uppercased; matched case-insensitively at checkout.
-  code String          @unique
-  type SM_DiscountType @default(PERCENT)
+  code  String          @unique
+  type  SM_DiscountType @default(PERCENT)
   /// PERCENT: whole percent (0-100). FIXED: cents off.
   value Int
 
@@ -628,6 +652,180 @@ model SM_DiscountCode {
   @@schema("smellymelly")
 }
 
+// ─── GIFT CERTIFICATES ───────────────────────────────────────────────────
+//
+// Money model (do not "simplify" this without reading the comment):
+//
+//   Selling a certificate is NOT revenue. It's cash in exchange for a promise
+//   of future goods — a liability (ASC 606 deferred revenue). Revenue is
+//   recognized when the card is REDEEMED and the goods actually ship.
+//   Consequently: gift-card lines are excluded from revenue and COGS in
+//   /admin/reports, are never taxed at sale (tax is charged on the eventual
+//   purchase, on the full price), and are never discounted.
+//
+//   Redeeming a certificate is a TENDER, not a discount. It comes off the
+//   total AFTER tax and shipping. Putting it in discountCents would silently
+//   shrink the taxable base and under-report revenue.
+//
+//   balanceCents is a CACHE. The SM_GiftCardTxn ledger is the source of
+//   truth — balance == SUM(txn.amountCents). Never mutate a balance without
+//   writing a ledger row in the same transaction.
+//
+// Legal posture: cards never expire and never carry fees. The federal CARD
+// Act sets a 5-year floor (it preempts Maryland's weaker 4-year rule), and
+// "no expiration, no fees" is both the safest position and the better brand
+// promise. expiresAt exists so the column is there if that ever changes, but
+// nothing writes it and nothing sweeps it.
+//
+// Escheat: West Virginia presumes a gift certificate abandoned 3 years after
+// the year of sale and deems 60% of face value payable to the state — but
+// unclaimed property flows to the state of the OWNER'S last known address,
+// and Maryland (where the business is domiciled) exempts certificates. We
+// therefore deliberately do NOT store purchaser or recipient addresses on a
+// gift card. See docs/GIFT-CERTIFICATES.md; confirm with a CPA before
+// recognizing any breakage income.
+
+enum SM_GiftCardStatus {
+  /// Printed on blank stock and not yet sold. The code exists but carries no
+  /// money, so a stolen stack of blanks is a stationery loss, not a cash loss.
+  UNISSUED
+  /// Sold and spendable. Stays ACTIVE at a zero balance (it can be reloaded).
+  ACTIVE
+  /// Killed by Mel — balance zeroed, cannot be redeemed or reactivated.
+  VOID
+
+  @@schema("smellymelly")
+}
+
+/// Every movement of money on a card. Append-only: rows are never updated or
+/// deleted, and amountCents is SIGNED (+ adds value, - spends it).
+enum SM_GiftCardTxnType {
+  /// Activation — the card was sold and loaded with its initial value.
+  ISSUE
+  /// Additional value added to an already-active card.
+  RELOAD
+  /// Spent against an order. Negative.
+  REDEEM
+  /// An order paid by card was refunded; value goes back on the card.
+  REFUND_TO_CARD
+  /// Manual correction by Mel. Signed either way, reason required.
+  ADJUST
+  /// Card killed — a negative row zeroing out whatever was left.
+  VOID
+
+  @@schema("smellymelly")
+}
+
+/// Where a card's value came from. Present from day one so store credit and
+/// promotional cards don't need a schema change later.
+enum SM_GiftCardIssueReason {
+  /// Bought by a customer.
+  PURCHASE
+  /// Issued as store credit in place of a cash refund.
+  REFUND
+  /// Given away (promo, prize, apology).
+  PROMO
+  /// Issued through a fundraiser campaign.
+  CAMPAIGN
+  /// Created by hand in the admin.
+  MANUAL
+
+  @@schema("smellymelly")
+}
+
+model SM_GiftCard {
+  id String @id @default(cuid())
+
+  /// Normalized form: uppercase, no hyphens, no "SM" prefix — 10 random
+  /// Crockford base32 chars + 1 check character. Stored in plaintext on
+  /// purpose: reading a code aloud over the phone and reprinting a lost
+  /// certificate are both core workflows, and hashing kills them. Brute
+  /// force is handled by 50 bits of entropy + rate limiting on the public
+  /// lookup, not by hashing.
+  code   String            @unique
+  /// Last 4 characters, for admin search when Mel only has a partial.
+  last4  String
+  status SM_GiftCardStatus @default(UNISSUED)
+
+  /// Face value at activation, in cents. 0 while UNISSUED.
+  initialCents Int @default(0)
+  /// CACHE of SUM(transactions.amountCents). The ledger is authoritative.
+  balanceCents Int @default(0)
+
+  issueReason SM_GiftCardIssueReason @default(PURCHASE)
+
+  /// Optional, purely so the certificate can be printed with names on it.
+  /// Deliberately no addresses — see the escheat note above.
+  recipientName String?
+  purchaserName String?
+  giftMessage   String?
+
+  /// The order that SOLD this card (null for blanks and manual issues).
+  issuedOnOrderId  String?
+  /// Set when a lost card is reissued — points at the replacement.
+  replacedByCardId String?
+  /// Free-form admin notes (reason for a void, "reissued for Katie", etc).
+  notes            String?
+
+  /// Always null. Present so the column exists if the legal posture ever
+  /// changes; nothing writes it and nothing expires cards.
+  expiresAt DateTime?
+
+  /// Set when the card was activated (sold), not when the blank was printed.
+  issuedAt       DateTime?
+  lastRedeemedAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  /// Blanks are printed in batches so Mel can run a sheet at home; this
+  /// groups them for reprinting.
+  batchId String?
+
+  transactions SM_GiftCardTxn[]
+  soldOnLines  SM_OrderItem[]   @relation("SoldOnLine")
+
+  @@index([status])
+  @@index([last4])
+  @@index([batchId])
+  @@map("sm_gift_cards")
+  @@schema("smellymelly")
+}
+
+/// Append-only money ledger. balance == SUM(amountCents) for a card, always.
+model SM_GiftCardTxn {
+  id                String             @id @default(cuid())
+  giftCardId        String
+  giftCard          SM_GiftCard        @relation(fields: [giftCardId], references: [id])
+  type              SM_GiftCardTxnType
+  /// SIGNED cents. ISSUE/RELOAD/REFUND_TO_CARD are positive; REDEEM/VOID are
+  /// negative; ADJUST can be either.
+  amountCents       Int
+  /// Running balance immediately after this row was written — lets the admin
+  /// history render without re-summing, and makes drift obvious if it happens.
+  balanceAfterCents Int
+
+  /// The order this movement belongs to (the sale for ISSUE, the purchase
+  /// for REDEEM, the refunded order for REFUND_TO_CARD).
+  orderId String?
+
+  /// Guards against double-applying the same redemption on a retried request.
+  /// Unique, so a replay hits the constraint instead of spending twice.
+  idempotencyKey String? @unique
+
+  /// Who did it — "pos", "checkout", "admin", or a cron name.
+  actor  String  @default("system")
+  /// Mandatory human reason for ADJUST and VOID.
+  reason String?
+
+  createdAt DateTime @default(now())
+
+  @@index([giftCardId, createdAt])
+  @@index([orderId])
+  @@index([type, createdAt])
+  @@map("sm_gift_card_txns")
+  @@schema("smellymelly")
+}
+
 // ─── RECIPES & MATERIALS (cost of goods) ─────────────────────────────────
 
 model SM_Material {
@@ -639,9 +837,9 @@ model SM_Material {
   supplier         String? // where she buys it
   notes            String?
   /// On-hand quantity in packageUnit; decremented when a batch is made.
-  onHand        Float  @default(0)
+  onHand           Float    @default(0)
   /// Alert threshold (packageUnit); at/below this it shows on the shopping list.
-  reorderPoint  Float?
+  reorderPoint     Float?
   isActive         Boolean  @default(true)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
