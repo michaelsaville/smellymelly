@@ -3,18 +3,36 @@ import { prisma } from './prisma'
 import type { SM_Order, SM_OrderItem } from '@prisma/client'
 
 // ─── Config ─────────────────────────────────────────────────────────────
-// App password from https://myaccount.google.com/apppasswords (requires 2FA on
-// the Google account). Store in .env.local. Free Gmail caps at 500 recipients
-// per day over SMTP — plenty for transactional mail at launch scale.
+// Generic SMTP — works with Resend, Brevo, Gmail, or any SMTP provider. Set
+// the EMAIL_SMTP_* vars in .env.local. Recommended: Resend (free 3,000/mo,
+// sends from your own verified domain):
+//   EMAIL_SMTP_HOST=smtp.resend.com
+//   EMAIL_SMTP_PORT=465
+//   EMAIL_SMTP_USER=resend
+//   EMAIL_SMTP_PASS=<Resend API key>
+//   EMAIL_FROM_ADDRESS=hello@smellymellys.net   (must be on the verified domain)
+// The legacy GMAIL_USER / GMAIL_APP_PASSWORD vars still work as a fallback.
 
-const GMAIL_USER = process.env.GMAIL_USER
-const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD
+const SMTP_HOST =
+  process.env.EMAIL_SMTP_HOST || (process.env.GMAIL_USER ? 'smtp.gmail.com' : undefined)
+const SMTP_PORT = Number(
+  process.env.EMAIL_SMTP_PORT || (process.env.GMAIL_USER ? '587' : '465'),
+)
+const SMTP_SECURE = process.env.EMAIL_SMTP_SECURE
+  ? process.env.EMAIL_SMTP_SECURE === 'true'
+  : SMTP_PORT === 465 // 465 = implicit TLS, 587 = STARTTLS
+const SMTP_USER = process.env.EMAIL_SMTP_USER || process.env.GMAIL_USER
+const SMTP_PASS = process.env.EMAIL_SMTP_PASS || process.env.GMAIL_APP_PASSWORD
 const FROM_NAME = process.env.EMAIL_FROM_NAME || 'Smelly Melly'
-const CONTACT_INBOX = process.env.CONTACT_INBOX_EMAIL || GMAIL_USER
-const STORE_URL = process.env.PUBLIC_URL || 'https://smellymelly.net'
+// Visible From address. Providers like Resend/Brevo send from your domain, not
+// from the SMTP username, so this is separate from SMTP_USER.
+const FROM_ADDRESS =
+  process.env.EMAIL_FROM_ADDRESS || process.env.GMAIL_USER || SMTP_USER
+const CONTACT_INBOX = process.env.CONTACT_INBOX_EMAIL || FROM_ADDRESS
+const STORE_URL = process.env.PUBLIC_URL || 'https://smellymellys.net'
 
 function isConfigured(): boolean {
-  return Boolean(GMAIL_USER && GMAIL_APP_PASSWORD)
+  return Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS && FROM_ADDRESS)
 }
 
 let cachedTransport: Transporter | null = null
@@ -22,10 +40,10 @@ function getTransport(): Transporter | null {
   if (!isConfigured()) return null
   if (cachedTransport) return cachedTransport
   cachedTransport = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
-    auth: { user: GMAIL_USER!, pass: GMAIL_APP_PASSWORD! },
+    host: SMTP_HOST!,
+    port: SMTP_PORT,
+    secure: SMTP_SECURE,
+    auth: { user: SMTP_USER!, pass: SMTP_PASS! },
   })
   return cachedTransport
 }
@@ -45,12 +63,15 @@ async function send({ to, subject, text, html, replyTo }: SendInput): Promise<vo
     return
   }
   await transport.sendMail({
-    from: `"${FROM_NAME}" <${GMAIL_USER!}>`,
+    from: `"${FROM_NAME}" <${FROM_ADDRESS!}>`,
     to,
     subject,
     text,
     html,
-    replyTo,
+    // Resend/domain sending is send-only, so default replies to the inbox Mel
+    // actually reads. The contact-form relay overrides this with the customer's
+    // address so Mel can reply straight to them.
+    replyTo: replyTo || CONTACT_INBOX || undefined,
   })
 }
 
@@ -235,6 +256,58 @@ ${paymentHtml}
     }</p>
 <p style="margin:24px 0 0;font-size:14px">— Mel</p>`,
   )
+
+  await send({ to: order.customerEmail, subject, text, html })
+}
+
+/**
+ * Receipt for an in-person (POS) sale that's ALREADY paid in hand. Unlike
+ * sendOrderConfirmation this never asks the buyer to pay — it's a thank-you +
+ * itemized receipt. No-ops cleanly (logs) until SMTP is configured.
+ */
+export async function sendPosReceipt(
+  order: SM_Order & { items: SM_OrderItem[] },
+): Promise<void> {
+  const { text: itemsText, html: itemsHtml } = orderTable(order.items)
+  const orderNum = String(order.orderNumber).padStart(4, '0')
+  const subject = `Your Smelly Melly receipt — Order #${orderNum}`
+
+  const row = (label: string, value: string, strong = false) =>
+    `<tr><td style="padding:2px 12px 2px 0;${strong ? 'font-weight:bold' : 'color:#8a7360'}">${label}</td><td style="padding:2px 0;text-align:right;${strong ? 'font-weight:bold' : ''}">${value}</td></tr>`
+
+  const totalsHtml =
+    row('Subtotal', money(order.subtotalCents)) +
+    (order.discountCents > 0
+      ? row(`Discount${order.discountCode ? ` (${escapeHtml(order.discountCode)})` : ''}`, `−${money(order.discountCents)}`)
+      : '') +
+    (order.taxCents > 0 ? row('Tax', money(order.taxCents)) : '') +
+    row('Total', money(order.totalCents), true)
+
+  const paidLine = order.manualPaymentNote
+    ? `<p style="margin:16px 0 0;font-size:13px;color:#8a7360">Paid in person · ${escapeHtml(order.manualPaymentNote)}</p>`
+    : `<p style="margin:16px 0 0;font-size:13px;color:#8a7360">Paid in person.</p>`
+
+  const html = await wrap(
+    'Thanks for your purchase!',
+    `<p style="margin:0 0 16px;font-size:14px">Here's your receipt for Order #${orderNum}.</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;border-collapse:collapse">
+${itemsHtml}
+<tr><td colspan="2" style="padding:8px 0"><hr style="border:none;border-top:1px solid #eee;margin:0"></td></tr>
+${totalsHtml}
+</table>
+${paidLine}
+<p style="margin:20px 0 0;font-size:14px">Thanks for supporting handmade — Mel</p>`,
+  )
+
+  const totalsText = [
+    `Subtotal: ${money(order.subtotalCents)}`,
+    order.discountCents > 0 ? `Discount: -${money(order.discountCents)}` : '',
+    order.taxCents > 0 ? `Tax: ${money(order.taxCents)}` : '',
+    `Total: ${money(order.totalCents)}`,
+  ]
+    .filter(Boolean)
+    .join('\n')
+  const text = `Thanks for your purchase!\n\nOrder #${orderNum}\n\n${itemsText}\n\n${totalsText}\n\nPaid in person${order.manualPaymentNote ? ` (${order.manualPaymentNote})` : ''}.\n\n— Mel, Smelly Melly`
 
   await send({ to: order.customerEmail, subject, text, html })
 }
