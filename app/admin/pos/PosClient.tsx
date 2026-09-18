@@ -15,6 +15,8 @@ import {
   checkTerminalPayment,
   startTerminalPayment,
 } from '@/app/lib/actions/terminal'
+import { cancelSdkCardPayment, startSdkCardPayment } from '@/app/lib/actions/pos-sdk-card'
+import { cancelNativeCollect, collectOnNativeReader, onReaderChange } from '@/app/lib/pos-native'
 
 /** A certificate the customer is paying WITH, once we've looked it up. */
 interface AppliedGiftCard {
@@ -295,12 +297,30 @@ function TenderSheet({
   // Keyed entry is the stand-in before the reader exists, and the escape hatch
   // for a card the reader won't read. Stripe rejects card charges under $0.50,
   // so below that the only honest option is to record it by hand.
+  // The M2 hangs off the native shell's Bluetooth bridge, so unlike the smart
+  // reader its presence is a runtime fact, not a saved setting — it can pair
+  // or drop while this sheet is open.
+  const [m2Label, setM2Label] = useState<string | null>(null)
+  useEffect(() => onReaderChange(setM2Label), [])
+
+  const canM2 = !!m2Label && cardAmountCents >= 50
   const canReader = !!readerLabel && cardAmountCents > 0
   const canKeyed = !!stripePublishableKey && cardAmountCents >= 50
   const [preferKeyed, setPreferKeyed] = useState(false)
-  const cardMode: 'reader' | 'keyed' | 'manual' =
-    canReader && !(preferKeyed && canKeyed) ? 'reader' : canKeyed ? 'keyed' : 'manual'
-  const useReader = canReader && cardMode === 'reader'
+  // The M2 outranks a smart reader only because it is the one physically in
+  // Mel's hand — both are card-present and priced the same.
+  const cardMode: 'm2' | 'reader' | 'keyed' | 'manual' =
+    preferKeyed && canKeyed
+      ? 'keyed'
+      : canM2
+        ? 'm2'
+        : canReader
+          ? 'reader'
+          : canKeyed
+            ? 'keyed'
+            : 'manual'
+  const useM2 = cardMode === 'm2'
+  const useReader = cardMode === 'reader'
   const useKeyed = cardMode === 'keyed' && cardAmountCents > 0
 
   const [tState, setTState] = useState<'idle' | 'waiting' | 'failed'>('idle')
@@ -375,6 +395,64 @@ function TenderSheet({
     const pi = livePi.current
     livePi.current = null
     await cancelTerminalPayment(pi ?? undefined)
+  }
+
+  // ---- Stripe Reader M2 (card-present, over the native shell) -----------
+  // The M2 has no screen of its own, so the SDK's prompts ("Insert or tap
+  // card", "Retry card") have to be shown here or Mel is holding a silent
+  // brick wondering whether it heard her.
+  const [m2Prompt, setM2Prompt] = useState<string | null>(null)
+  const m2Pi = useRef<string | null>(null)
+
+  async function chargeOnM2() {
+    setTState('waiting')
+    setTMsg(null)
+    setM2Prompt(null)
+
+    const started = await startSdkCardPayment({ amountCents: cardAmountCents })
+    if (!started.ok) {
+      setTState('failed')
+      setTMsg(started.error)
+      return
+    }
+    m2Pi.current = started.paymentIntentId
+
+    // One await covers the whole tap-decline-retry dance: the shell owns the
+    // retry loop against this single intent, because a second intent for a
+    // declined card is a second authorisation on the customer.
+    const res = await collectOnNativeReader({
+      clientSecret: started.clientSecret,
+      amountCents: cardAmountCents,
+      onStatus: setM2Prompt,
+    })
+
+    setM2Prompt(null)
+    if (res.ok) {
+      setTState('idle')
+      m2Pi.current = null
+      onComplete({
+        tenders: tendersForCompletion(),
+        stripePaymentIntentId: res.paymentIntentId,
+      })
+      return
+    }
+
+    setTState('failed')
+    setTMsg(res.error)
+    // Nothing was taken, so don't leave an authorisation hanging on the card.
+    const pi = m2Pi.current
+    m2Pi.current = null
+    if (pi) await cancelSdkCardPayment(pi)
+  }
+
+  async function abortM2Charge() {
+    cancelNativeCollect()
+    setTState('idle')
+    setTMsg(null)
+    setM2Prompt(null)
+    const pi = m2Pi.current
+    m2Pi.current = null
+    if (pi) await cancelSdkCardPayment(pi)
   }
 
   function methodChips(active: string, set: (m: string) => void, size: 'lg' | 'sm' = 'lg') {
@@ -513,7 +591,18 @@ function TenderSheet({
                 </div>
               </div>
             ) : (
-              useReader ? (
+              useM2 ? (
+                <div className="rounded-lg border border-brand-warm/60 bg-white px-3 py-3">
+                  <div className="text-xs font-medium uppercase tracking-wide text-brand-brown/50">
+                    Card reader
+                  </div>
+                  <p className="mt-1 text-sm text-brand-dark">{m2Label}</p>
+                  <p className="mt-2 text-xs text-brand-brown/60">
+                    Tapping below wakes the reader for {money(cardAmountCents)}. Hand it to the
+                    customer — the sale is recorded once the card goes through.
+                  </p>
+                </div>
+              ) : useReader ? (
                 <div className="rounded-lg border border-brand-warm/60 bg-white px-3 py-3">
                   <div className="text-xs font-medium uppercase tracking-wide text-brand-brown/50">
                     Card reader
@@ -596,15 +685,18 @@ function TenderSheet({
               onComplete({ tenders: tendersForCompletion(), stripePaymentIntentId: pi })
             }
           />
-        ) : useReader && tState === 'waiting' ? (
+        ) : (useM2 || useReader) && tState === 'waiting' ? (
           <>
-            <div className="mt-4 flex h-14 w-full items-center justify-center rounded-lg bg-brand-cream text-base font-medium text-brand-brown">
-              <span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-brand-terra" />
-              Waiting for the card…
+            <div
+              aria-live="polite"
+              className="mt-4 flex h-14 w-full items-center justify-center rounded-lg bg-brand-cream px-3 text-center text-base font-medium text-brand-brown"
+            >
+              <span className="mr-2 inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-brand-terra" />
+              {m2Prompt ?? 'Waiting for the card…'}
             </div>
             <button
               type="button"
-              onClick={abortReaderCharge}
+              onClick={useM2 ? abortM2Charge : abortReaderCharge}
               className="mt-2 h-11 w-full text-sm text-brand-brown/60 hover:text-brand-brown"
             >
               Cancel the charge
@@ -613,7 +705,7 @@ function TenderSheet({
         ) : (
           <button
             type="button"
-            onClick={useReader ? chargeOnReader : finish}
+            onClick={useM2 ? chargeOnM2 : useReader ? chargeOnReader : finish}
             disabled={busy || (fullyCovered ? false : split ? !splitOk : !cashOk)}
             className="btn-primary mt-4 h-14 w-full text-base disabled:opacity-50"
           >
@@ -621,7 +713,7 @@ function TenderSheet({
               ? 'Recording…'
               : fullyCovered
                 ? 'Complete sale'
-                : useReader
+                : useM2 || useReader
                   ? `${tState === 'failed' ? 'Try again — ' : ''}Charge ${money(cardAmountCents)} on reader`
                   : 'Done'}
           </button>
@@ -629,7 +721,7 @@ function TenderSheet({
 
         {/* Only worth offering once both paths exist — before the reader
             arrives keyed IS the card path, and there is nothing to swap to. */}
-        {canReader && canKeyed && tState !== 'waiting' && !busy && (
+        {(canM2 || canReader) && canKeyed && tState !== 'waiting' && !busy && (
           <button
             type="button"
             onClick={() => setPreferKeyed((v) => !v)}
