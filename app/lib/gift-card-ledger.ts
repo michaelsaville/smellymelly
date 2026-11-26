@@ -21,7 +21,7 @@
  */
 
 import type { Prisma, SM_GiftCard, SM_GiftCardIssueReason } from '@prisma/client'
-import { generateGiftCode, giftCardLast4 } from './gift-cards'
+import { formatGiftCode, generateGiftCode, giftCardLast4 } from './gift-cards'
 
 export type Tx = Prisma.TransactionClient
 
@@ -78,6 +78,9 @@ export interface IssueInput {
   orderId?: string | null
   /** Activate this existing blank instead of minting a new code. */
   existingCardId?: string | null
+  /** When it was actually sold, if earlier than now (a blank filled in by
+   *  hand at a market and entered afterwards). Defaults to now. */
+  issuedAt?: Date | null
   actor?: string
 }
 
@@ -106,7 +109,7 @@ export async function issueCard(tx: Tx, input: IssueInput): Promise<SM_GiftCard>
         giftMessage: input.giftMessage ?? null,
         notes: input.notes ?? null,
         issuedOnOrderId: input.orderId ?? null,
-        issuedAt: new Date(),
+        issuedAt: input.issuedAt ?? new Date(),
       },
     })
     if (res.count !== 1) {
@@ -128,7 +131,7 @@ export async function issueCard(tx: Tx, input: IssueInput): Promise<SM_GiftCard>
         giftMessage: input.giftMessage ?? null,
         notes: input.notes ?? null,
         issuedOnOrderId: input.orderId ?? null,
-        issuedAt: new Date(),
+        issuedAt: input.issuedAt ?? new Date(),
       },
     })
   }
@@ -322,4 +325,88 @@ export async function voidCard(
       },
     })
   }
+}
+
+/**
+ * Record a pre-printed blank that was filled in by hand and sold away from the
+ * till (a market, a pop-up) and is only now being entered.
+ *
+ * Writes the same shape a POS gift-certificate sale does — a paid order with a
+ * GIFT_CARD line, and the card activated against that order — so the money
+ * shows up in Reports on the day it was actually taken, and the card's history
+ * links back to the sale. The order is marked PICKED_UP because the customer
+ * walked away with the certificate; nothing is left to fulfil.
+ */
+export async function sellBlankOffline(
+  tx: Tx,
+  input: {
+    cardId: string
+    amountCents: number
+    /** How they paid — "Cash", "Card", "Venmo"… Goes on the order's payment note. */
+    paidWith: string
+    soldAt: Date
+    recipientName?: string | null
+    purchaserName?: string | null
+    actor?: string
+  },
+): Promise<{ orderId: string; orderNumber: number }> {
+  const amountCents = Math.round(input.amountCents)
+  if (!Number.isFinite(amountCents) || amountCents <= 0) {
+    throw new GiftCardError('BAD_AMOUNT', 'Enter an amount greater than zero.')
+  }
+  const blank = await tx.sM_GiftCard.findUnique({ where: { id: input.cardId } })
+  if (!blank) throw new GiftCardError('NOT_FOUND', 'That gift certificate does not exist.')
+  if (blank.status !== 'UNISSUED') {
+    throw new GiftCardError(
+      'ALREADY_ISSUED',
+      `${formatGiftCode(blank.code)} has already been ${blank.status === 'VOID' ? 'voided' : 'activated'}.`,
+    )
+  }
+
+  const order = await tx.sM_Order.create({
+    data: {
+      status: 'PICKED_UP',
+      fulfillment: 'PICKUP',
+      customerName: input.purchaserName?.trim() || 'In-person sale',
+      customerEmail: 'pos@smellymellys.net',
+      subtotalCents: amountCents,
+      shippingCents: 0,
+      discountCents: 0,
+      taxCents: 0,
+      totalCents: amountCents,
+      giftCardCents: 0,
+      paymentMethod: 'MANUAL',
+      manualPaymentNote: `${input.paidWith} — pre-printed gift certificate, entered after the sale`,
+      paidAt: input.soldAt,
+      createdAt: input.soldAt,
+    },
+  })
+
+  // issueCard's conditional update is the real guard: if another tab activated
+  // this blank since the check above, it throws and the order rolls back.
+  const card = await issueCard(tx, {
+    existingCardId: blank.id,
+    amountCents,
+    issueReason: 'PURCHASE',
+    recipientName: input.recipientName?.trim() || null,
+    purchaserName: input.purchaserName?.trim() || null,
+    orderId: order.id,
+    issuedAt: input.soldAt,
+    actor: input.actor ?? 'admin',
+  })
+
+  await tx.sM_OrderItem.create({
+    data: {
+      orderId: order.id,
+      kind: 'GIFT_CARD',
+      giftCardId: card.id,
+      productName: 'Gift Certificate',
+      variantName: formatGiftCode(card.code),
+      quantity: 1,
+      unitCents: amountCents,
+      totalCents: amountCents,
+    },
+  })
+
+  return { orderId: order.id, orderNumber: order.orderNumber }
 }

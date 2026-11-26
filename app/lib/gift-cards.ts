@@ -89,3 +89,7 @@ export function formatGiftCode(code: string): string {
 export function giftCardLast4(code: string): string {
   return code.slice(-4)
 }
+
+/** How a hand-filled blank was paid for — shown on the entry screen and
+ *  written to the order's payment note. */
+export const PAID_WITH_OPTIONS = ['Cash', 'Card', 'Venmo', 'Cash App', 'Check'] as const

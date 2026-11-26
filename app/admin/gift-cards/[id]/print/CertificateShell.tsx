@@ -35,8 +35,10 @@ export default function CertificateShell({
             size: letter portrait;
             margin: 0.5in;
           }
+          /* !important: the screen rule for the toolbar below comes later
+           * in the sheet and would otherwise win, printing the buttons. */
           .sm-print-toolbar {
-            display: none;
+            display: none !important;
           }
           /* Unlike the other print shells (scent sheet, menu), this route
            * lives INSIDE app/admin, so it inherits AdminNav. Drop the admin

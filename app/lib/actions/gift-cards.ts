@@ -5,13 +5,14 @@ import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
 import type { SM_GiftCardIssueReason } from '@prisma/client'
 import { prisma } from '@/app/lib/prisma'
-import { parseGiftCode, formatGiftCode } from '@/app/lib/gift-cards'
+import { parseGiftCode, formatGiftCode, PAID_WITH_OPTIONS } from '@/app/lib/gift-cards'
 import {
   GiftCardError,
   addToCard,
   createBlanks,
   deductFromCard,
   issueCard,
+  sellBlankOffline,
   voidCard,
 } from '@/app/lib/gift-card-ledger'
 
@@ -110,6 +111,85 @@ export async function activateBlank(input: {
   } catch (err) {
     return toError(err, 'Could not activate the certificate.')
   }
+}
+
+export type BlankSaleRow =
+  | {
+      cardId: string
+      kind: 'sold'
+      amountCents: number
+      paidWith: string
+      /** YYYY-MM-DD, the day it was actually sold. */
+      soldOn: string
+      recipientName?: string
+      purchaserName?: string
+    }
+  | { cardId: string; kind: 'spoiled' }
+
+/**
+ * Enter the pre-printed blanks Mel filled in by hand. Each row stands alone —
+ * one bad row (a typo'd amount, a card already entered from another tab) is
+ * reported back without blocking the rest, so she never has to re-key a stack.
+ */
+export async function recordBlankSales(
+  rows: BlankSaleRow[],
+): Promise<Result<{ results: { cardId: string; ok: boolean; error?: string; orderNumber?: number }[] }>> {
+  await requireAdmin()
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { ok: false, error: 'Fill in at least one certificate first.' }
+  }
+  if (rows.length > 200) return { ok: false, error: 'Too many rows at once.' }
+
+  const todayIso = new Date().toISOString().slice(0, 10)
+  const results: { cardId: string; ok: boolean; error?: string; orderNumber?: number }[] = []
+  for (const row of rows) {
+    try {
+      if (row.kind === 'spoiled') {
+        await prisma.$transaction(async (tx) => {
+          const card = await tx.sM_GiftCard.findUnique({ where: { id: row.cardId } })
+          if (!card || card.status !== 'UNISSUED') {
+            throw new GiftCardError('NOT_ACTIVE', 'Only an unsold blank can be marked spoiled.')
+          }
+          await voidCard(tx, { cardId: row.cardId, reason: 'Spoiled blank', actor: 'admin' })
+          await tx.sM_GiftCard.update({
+            where: { id: row.cardId },
+            data: { notes: [card.notes, 'Spoiled blank — voided, never sold.'].filter(Boolean).join('\n') },
+          })
+        })
+        results.push({ cardId: row.cardId, ok: true })
+        continue
+      }
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(row.soldOn) || row.soldOn > todayIso) {
+        throw new GiftCardError('BAD_AMOUNT', 'Pick the day it was sold (not in the future).')
+      }
+      const paidWith = (PAID_WITH_OPTIONS as readonly string[]).includes(row.paidWith)
+        ? row.paidWith
+        : 'Cash'
+      // Midday UTC lands on the same calendar day in US time zones, so the
+      // sale reports on the day Mel picked rather than drifting a day early.
+      const soldAt = new Date(`${row.soldOn}T17:00:00.000Z`)
+      const res = await prisma.$transaction((tx) =>
+        sellBlankOffline(tx, {
+          cardId: row.cardId,
+          amountCents: row.amountCents,
+          paidWith,
+          soldAt,
+          recipientName: row.recipientName,
+          purchaserName: row.purchaserName,
+          actor: 'admin',
+        }),
+      )
+      results.push({ cardId: row.cardId, ok: true, orderNumber: res.orderNumber })
+    } catch (err) {
+      const e = toError(err, 'Could not save this one.')
+      results.push({ cardId: row.cardId, ok: false, error: e.error })
+    }
+  }
+  refresh()
+  revalidatePath('/admin/reports')
+  revalidatePath('/admin/orders')
+  return { ok: true, results }
 }
 
 export async function reloadGiftCard(cardId: string, amountCents: number): Promise<Result> {

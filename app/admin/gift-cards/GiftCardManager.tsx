@@ -31,12 +31,21 @@ const STATUS_STYLE: Record<string, string> = {
 
 const PRESETS = [1000, 2000, 2500, 5000]
 
+interface BatchRow {
+  batchId: string
+  createdAt: string
+  blank: number
+  done: number
+}
+
 export default function GiftCardManager({
   cards,
+  batches,
   outstandingCents,
   redeemedCents,
 }: {
   cards: CardRow[]
+  batches: BatchRow[]
   outstandingCents: number
   redeemedCents: number
 }) {
@@ -106,7 +115,7 @@ export default function GiftCardManager({
       setError(res.error)
       return
     }
-    router.refresh()
+    router.push(`/admin/gift-cards/batch/${res.batchId}/print`)
   }
 
   return (
@@ -259,9 +268,38 @@ export default function GiftCardManager({
               className="input w-24"
             />
             <button onClick={submitBatch} disabled={busy} className="btn-secondary disabled:opacity-50">
-              Create
+              Create &amp; print
             </button>
           </div>
+          <p className="mt-2 text-xs text-brand-brown/60">
+            Prints two per sheet, each with a stub you keep. Back home, open the batch below and
+            type in what each one sold for.
+          </p>
+
+          {batches.length > 0 && (
+            <ul className="mt-4 divide-y divide-brand-warm/40 border-t border-brand-warm/40">
+              {batches.slice(0, 8).map((b) => (
+                <li key={b.batchId} className="flex items-center justify-between gap-2 py-2 text-sm">
+                  <div>
+                    <div className="text-brand-dark">
+                      {new Date(b.createdAt).toLocaleDateString()}
+                    </div>
+                    <div className="text-xs text-brand-brown/60">
+                      {b.blank} blank · {b.done} entered
+                    </div>
+                  </div>
+                  <Link
+                    href={`/admin/gift-cards/batch/${b.batchId}`}
+                    className={`shrink-0 text-sm font-medium ${
+                      b.blank > 0 ? 'text-brand-terra hover:underline' : 'text-brand-brown/50'
+                    }`}
+                  >
+                    {b.blank > 0 ? 'Enter sales →' : 'View'}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
 

@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 export default async function GiftCardsPage() {
   await requireAdmin()
 
-  const [cards, liability, redeemedAgg] = await Promise.all([
+  const [cards, liability, redeemedAgg, batchGroups] = await Promise.all([
     prisma.sM_GiftCard.findMany({ orderBy: { createdAt: 'desc' }, take: 500 }),
     // Outstanding balance on live cards = the deferred-revenue liability, i.e.
     // goods Mel still owes. This is the number a CPA asks for.
@@ -20,7 +20,32 @@ export default async function GiftCardsPage() {
       where: { type: 'REDEEM' },
       _sum: { amountCents: true },
     }),
+    prisma.sM_GiftCard.groupBy({
+      by: ['batchId', 'status'],
+      where: { batchId: { not: null } },
+      _count: { _all: true },
+      _min: { createdAt: true },
+    }),
   ])
+
+  // One row per printed batch: how many are still blank vs. already entered.
+  const batchMap = new Map<string, { batchId: string; createdAt: Date; blank: number; done: number }>()
+  for (const g of batchGroups) {
+    if (!g.batchId) continue
+    const b = batchMap.get(g.batchId) ?? {
+      batchId: g.batchId,
+      createdAt: g._min.createdAt ?? new Date(0),
+      blank: 0,
+      done: 0,
+    }
+    if (g._min.createdAt && g._min.createdAt < b.createdAt) b.createdAt = g._min.createdAt
+    if (g.status === 'UNISSUED') b.blank += g._count._all
+    else b.done += g._count._all
+    batchMap.set(g.batchId, b)
+  }
+  const batches = [...batchMap.values()]
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .map((b) => ({ ...b, createdAt: b.createdAt.toISOString() }))
 
   const rows = cards.map((c) => ({
     id: c.id,
@@ -39,6 +64,7 @@ export default async function GiftCardsPage() {
   return (
     <GiftCardManager
       cards={rows}
+      batches={batches}
       outstandingCents={liability._sum.balanceCents ?? 0}
       // REDEEM rows are stored negative; flip the sign for display.
       redeemedCents={Math.abs(redeemedAgg._sum.amountCents ?? 0)}
